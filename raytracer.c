@@ -41,6 +41,10 @@ bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size]);
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size]);
 void mat_transpose(int size, float mat_a[size][size], float mat_out[size][size]);
 void submatrix(int size, float mat_a[size][size], float mat_out[size - 1][size - 1], int remove_row, int remove_col);
+float mat_det(int size, float mat_a[size][size]);
+float mat_minor(int size, float mat[size][size], int row, int col);
+float mat_cofactor(int size, float mat[size][size], int row, int col);
+void mat_inverse(int size, float mat[size][size], float out_mat[size][size]);
 
 int main(int argc, char const *argv[])
 {
@@ -268,7 +272,48 @@ int main(int argc, char const *argv[])
     };
 
     assert(mat_equal(3, ref_3_3, res_3_3));
+    float A[3][3] = {{1, 2, 6}, {-5, 8, -4}, {2, 6, 4}};
+    float B[4][4] = {
+        {-2, -8, 3, 5},
+        {-3, 1, 7, 3},
+        {1, 2, -9, 6},
+        {-6, 7, 7, -9},
+    };
+    float x = mat_det(3, A);
+    float y = mat_det(4, B);
+    assert(x == -196);
+    assert(y == -4071);
+    // Test Matrix Inverse
+    float A1[4][4] = {
+        {8, -5, 9, 2},
+        {7, 5, 6, 1},
+        {-6, 0, 9, 6},
+        {-3, 0, -9, -4}};
+    float expected_inv1[4][4] = {
+        {-0.15385, -0.15385, -0.28205, -0.53846},
+        {-0.07692, 0.12308, 0.02564, 0.03077},
+        {0.35897, 0.35897, 0.43590, 0.92308},
+        {-0.69231, -0.69231, -0.76923, -1.92308}};
+    float out_inv1[4][4];
 
+    mat_inverse(4, A1, out_inv1);
+    assert(mat_equal(4, expected_inv1, out_inv1));
+
+    float A2[4][4] = {
+        {9, 3, 0, 9},
+        {-5, -2, -6, -3},
+        {-4, 9, 6, 4},
+        {-7, 6, 6, 2}};
+    float expected_inv2[4][4] = {
+        {-0.04074, -0.07778, 0.14444, -0.22222},
+        {-0.07778, 0.03333, 0.36667, -0.33333},
+        {-0.02901, -0.14630, -0.10926, 0.12963},
+        {0.17778, 0.06667, -0.26667, 0.33333}};
+    float out_inv2[4][4];
+
+    mat_inverse(4, A2, out_inv2);
+
+    assert(mat_equal(4, expected_inv2, out_inv2));
     // Everything passes
     puts("All checks pass.");
 }
@@ -476,9 +521,18 @@ void mat_transpose(int size, float mat_a[size][size], float mat_out[size][size])
     }
 }
 
-// float mat_determinant(int size, float mat_a[size][size]){
+float mat_minor(int size, float mat[size][size], int row, int col)
+{
+    float sub[size - 1][size - 1];
+    submatrix(size, mat, sub, row, col);
+    return mat_det(size - 1, sub);
+}
 
-// }
+float mat_cofactor(int size, float mat[size][size], int row, int col)
+{
+    float minor = mat_minor(size, mat, row, col);
+    return ((row + col) % 2 != 0) ? -minor : minor;
+}
 
 void submatrix(int size, float mat_a[size][size], float mat_out[size - 1][size - 1], int remove_row, int remove_col)
 {
@@ -506,5 +560,37 @@ float mat_det(int size, float mat_a[size][size])
     if (size == 2)
     {
         return mat_a[0][0] * mat_a[1][1] - mat_a[0][1] * mat_a[1][0];
+    }
+
+    float det = 0;
+    float sub[size - 1][size - 1];
+    int sign = 1;
+
+    for (int i = 0; i < size; i++)
+    {
+        submatrix(size, mat_a, sub, 0, i);
+        det += sign * mat_a[0][i] * mat_det(size - 1, sub);
+        sign = -sign;
+    }
+}
+
+bool mat_is_invertible(int size, float mat[size][size])
+{
+    return !equal(mat_det(size, mat), 0);
+}
+
+void mat_inverse(int size, float mat[size][size], float out_mat[size][size])
+{
+    float det = mat_det(size, mat);
+    if (det == 0)
+        return;
+
+    for (int row = 0; row < size; row++)
+    {
+        for (int col = 0; col < size; col++)
+        {
+            float c = mat_cofactor(size, mat, row, col);
+            out_mat[col][row] = c / det;
+        }
     }
 }
