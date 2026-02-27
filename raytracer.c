@@ -39,6 +39,8 @@ char *canvas_to_ppm(Canvas *can, char *file_name);
 void write_ppm_to_file(char *data, int width, int height, char *file_name);
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size]);
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size]);
+void mat_transpose(int size, float mat_a[size][size], float mat_out[size][size]);
+void submatrix(int size, float mat_a[size][size], float mat_out[size - 1][size - 1], int remove_row, int remove_col);
 
 int main(int argc, char const *argv[])
 {
@@ -160,9 +162,24 @@ int main(int argc, char const *argv[])
     }
     canvas_to_ppm(&physics_canvas, "physics.ppm");
     // Test Matrix
-    float my_matrix[4][4] = {{1, 2, 3, 4}, {5.5, 6.5, 7.5, 8.5}, {9, 10, 11, 12}, {13.5, 14.5, 15.5, 16.5}};
-    float my_matrix2[4][4] = {{1, 2, 3, 4}, {5.5, 6.5, 7.5, 8.5}, {9, 10, 11, 12}, {13.5, 14.5, 15.5, 16.5}};
-    float my_matrix3[4][4] = {{1, 2, 3, 4}, {5.5, 6.5, 7.5, 8.5}, {9, 10, 11, 12}, {13.5, 14.5, 15.5, 16.54}};
+    float my_matrix[4][4] = {
+        {1, 2, 3, 4},
+        {5.5, 6.5, 7.5, 8.5},
+        {9, 10, 11, 12},
+        {13.5, 14.5, 15.5, 16.5},
+    };
+    float my_matrix2[4][4] = {
+        {1, 2, 3, 4},
+        {5.5, 6.5, 7.5, 8.5},
+        {9, 10, 11, 12},
+        {13.5, 14.5, 15.5, 16.5},
+    };
+    float my_matrix3[4][4] = {
+        {1, 2, 3, 4},
+        {5.5, 6.5, 7.5, 8.5},
+        {9, 10, 11, 12},
+        {13.5, 14.5, 15.5, 16.54},
+    };
 
     assert(my_matrix[0][0] == 1);
     assert(my_matrix[0][3] == 4);
@@ -170,6 +187,87 @@ int main(int argc, char const *argv[])
 
     assert(mat_equal(4, &my_matrix[0], &my_matrix2[0]));
     assert(!mat_equal(4, &my_matrix[0], &my_matrix3[0]));
+    // Test Matrix Mult
+    float mat_1[4][4] = {
+        {1, 2, 3, 4},
+        {5, 6, 7, 8},
+        {9, 8, 7, 6},
+        {5, 4, 3, 2},
+    };
+
+    float mat_2[4][4] = {
+        {-2, 1, 2, 3},
+        {3, 2, 1, -1},
+        {4, 3, 6, 5},
+        {1, 2, 7, 8},
+    };
+
+    float res_matrix[4][4];
+    mat_mult(4, mat_1, mat_2, res_matrix);
+
+    float my_mat[4][4] = {
+        {20, 22, 50, 48},
+        {44, 54, 114, 108},
+        {40, 58, 110, 102},
+        {16, 26, 46, 42},
+    };
+    assert(mat_equal(4, my_mat, res_matrix));
+    // Test Identity
+    float identity_matrix[4][4] = {
+        {1, 0, 0, 0},
+        {0, 1, 0, 0},
+        {0, 0, 1, 0},
+        {0, 0, 0, 1},
+    };
+    mat_mult(4, mat_1, identity_matrix, res_matrix);
+    assert(mat_equal(4, mat_1, res_matrix));
+    // Test Transpose
+    float mat_a[4][4] = {
+        {0, 9, 3, 0},
+        {9, 8, 0, 8},
+        {1, 8, 5, 3},
+        {0, 0, 5, 8},
+    };
+    float transpose_mat_a[4][4] = {
+        {0, 9, 1, 0},
+        {9, 8, 8, 0},
+        {3, 0, 5, 5},
+        {0, 8, 3, 8},
+    };
+    mat_transpose(4, mat_a, res_matrix);
+    assert(mat_equal(4, transpose_mat_a, res_matrix));
+    // Test Submatrix
+    float mat_3_3[3][3] = {
+        {1, 5, 0},
+        {-3, 2, 7},
+        {0, 6, -3},
+    };
+    float res_2_2[2][2];
+    submatrix(3, mat_3_3, res_2_2, 0, 2);
+    float ref_2_2[2][2] = {
+        {-3, 2},
+        {0, 6},
+    };
+
+    assert(mat_equal(2, ref_2_2, res_2_2));
+
+    float mat_b[4][4] = {
+        {-6, 1, 1, 6},
+        {-8, 5, 8, 6},
+        {-1, 0, 8, 2},
+        {-7, 1, -1, 1},
+    };
+    float res_3_3[3][3];
+
+    submatrix(4, mat_b, res_3_3, 2, 1);
+
+    float ref_3_3[3][3] = {
+        {-6, 1, 6},
+        {-8, 8, 6},
+        {-7, -1, 1},
+    };
+
+    assert(mat_equal(3, ref_3_3, res_3_3));
 
     // Everything passes
     puts("All checks pass.");
@@ -343,12 +441,14 @@ bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size])
         {
             if (!equal(mat_a[i][j], mat_b[i][j]))
             {
+                // printf("i: %d, j: %d, mat1 %f, mat2 %f\n", i, j, mat_a[i][j], mat_b[i][j]);
                 return false;
             }
         }
     }
     return true;
 }
+
 // THIS HAS SIDE EFFECTS,
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size])
 {
@@ -356,10 +456,55 @@ void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float 
     {
         for (int j = 0; j < size; j++)
         {
+            mat_out[i][j] = 0.0f;
             for (int k = 0; k < size; k++)
             {
-                mat_out[i][j] = mat_a[i][k] * mat_b[k][j];
+                mat_out[i][j] += mat_a[i][k] * mat_b[k][j];
             }
         }
+    }
+}
+
+void mat_transpose(int size, float mat_a[size][size], float mat_out[size][size])
+{
+    for (int i = 0; i < size; i++)
+    {
+        for (int j = 0; j < size; j++)
+        {
+            mat_out[i][j] = mat_a[j][i];
+        }
+    }
+}
+
+// float mat_determinant(int size, float mat_a[size][size]){
+
+// }
+
+void submatrix(int size, float mat_a[size][size], float mat_out[size - 1][size - 1], int remove_row, int remove_col)
+{
+    int new_col = 0;
+    for (int col = 0; col < size; col++)
+    {
+        int new_row = 0;
+
+        if (col == remove_col)
+            continue;
+        for (int row = 0; row < size; row++)
+        {
+            if (row == remove_row)
+                continue;
+            mat_out[new_row][new_col] = mat_a[row][col];
+            new_row++;
+        }
+        new_col++;
+    }
+    return;
+}
+
+float mat_det(int size, float mat_a[size][size])
+{
+    if (size == 2)
+    {
+        return mat_a[0][0] * mat_a[1][1] - mat_a[0][1] * mat_a[1][0];
     }
 }
