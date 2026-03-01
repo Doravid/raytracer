@@ -45,6 +45,8 @@ float mat_det(int size, float mat_a[size][size]);
 float mat_minor(int size, float mat[size][size], int row, int col);
 float mat_cofactor(int size, float mat[size][size], int row, int col);
 void mat_inverse(int size, float mat[size][size], float out_mat[size][size]);
+Tuple mat_tuple_mult(float mat[4][4], Tuple tup);
+void mat_translate(float x, float y, float z, float out[4][4]);
 
 int main(int argc, char const *argv[])
 {
@@ -216,6 +218,19 @@ int main(int argc, char const *argv[])
         {16, 26, 46, 42},
     };
     assert(mat_equal(4, my_mat, res_matrix));
+    // Test Matrix x Tuple
+    float mat_tuple[4][4] = {
+        {1, 2, 3, 4},
+        {2, 4, 4, 2},
+        {8, 6, 4, 1},
+        {0, 0, 0, 1},
+    };
+    Tuple my_tuple = tuple(1, 2, 3, 1);
+
+    Tuple res_tuple = mat_tuple_mult(mat_tuple, my_tuple);
+
+    assert(tuple_equal(res_tuple, tuple(18, 24, 33, 1)));
+
     // Test Identity
     float identity_matrix[4][4] = {
         {1, 0, 0, 0},
@@ -312,6 +327,18 @@ int main(int argc, char const *argv[])
     float out_inv2[4][4];
 
     mat_inverse(4, A2, out_inv2);
+    // Test Matrix Translate
+    float trans_mat[4][4];
+    float rev_trans_mat[4][4];
+    mat_translate(5, -3, 2, trans_mat);
+    mat_inverse(4, trans_mat, rev_trans_mat);
+
+    Tuple some_point = point(-3, 4, 5);
+    Tuple output = mat_tuple_mult(trans_mat, some_point);
+    Tuple origin = mat_tuple_mult(rev_trans_mat, output);
+
+    assert(tuple_equal(output, point(2, 1, 7)));
+    assert(tuple_equal(some_point, origin));
 
     assert(mat_equal(4, expected_inv2, out_inv2));
     // Everything passes
@@ -572,6 +599,7 @@ float mat_det(int size, float mat_a[size][size])
         det += sign * mat_a[0][i] * mat_det(size - 1, sub);
         sign = -sign;
     }
+    return det;
 }
 
 bool mat_is_invertible(int size, float mat[size][size])
@@ -593,4 +621,30 @@ void mat_inverse(int size, float mat[size][size], float out_mat[size][size])
             out_mat[col][row] = c / det;
         }
     }
+}
+
+Tuple mat_tuple_mult(float mat[4][4], Tuple tup)
+{
+    Tuple temp;
+    temp.x = mat[0][0] * tup.x + mat[0][1] * tup.y + mat[0][2] * tup.z + mat[0][3] * tup.w;
+    temp.y = mat[1][0] * tup.x + mat[1][1] * tup.y + mat[1][2] * tup.z + mat[1][3] * tup.w;
+    temp.z = mat[2][0] * tup.x + mat[2][1] * tup.y + mat[2][2] * tup.z + mat[2][3] * tup.w;
+    temp.w = mat[3][0] * tup.x + mat[3][1] * tup.y + mat[3][2] * tup.z + mat[3][3] * tup.w;
+
+    return temp;
+}
+
+void mat_translate(float x, float y, float z, float out[4][4])
+{
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            out[i][j] = 0.0f;
+        }
+        out[i][i] = 1.0f;
+    }
+    out[0][3] = x;
+    out[1][3] = y;
+    out[2][3] = z;
 }
