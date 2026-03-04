@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef M_PI
+#define M_PI (3.14159265358979323846)
+#endif
+
 #define EPSILON (0.00001)
 struct tuple
 {
@@ -35,7 +39,7 @@ Tuple tuple_cross(Tuple a, Tuple b);
 Canvas canvas(int width, int height);
 Tuple color(float red, float green, float blue);
 void write_pixel(Canvas *can, int x, int y, Tuple col);
-char *canvas_to_ppm(Canvas *can, char *file_name);
+void canvas_to_ppm(Canvas *can, char *file_name);
 void write_ppm_to_file(char *data, int width, int height, char *file_name);
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size]);
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size]);
@@ -47,6 +51,11 @@ float mat_cofactor(int size, float mat[size][size], int row, int col);
 void mat_inverse(int size, float mat[size][size], float out_mat[size][size]);
 Tuple mat_tuple_mult(float mat[4][4], Tuple tup);
 void mat_translate(float x, float y, float z, float out[4][4]);
+void mat_rotate_x(float r, float out[4][4]);
+void mat_rotate_y(float r, float out[4][4]);
+void mat_rotate_z(float r, float out[4][4]);
+void mat_scale(float x, float y, float z, float out[4][4]);
+void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4][4]);
 
 int main(int argc, char const *argv[])
 {
@@ -143,7 +152,7 @@ int main(int argc, char const *argv[])
             new_canvas.canvas[i][j] = color(.6, i / 30.0, j / 30.0);
         }
     }
-    char *image = canvas_to_ppm(&new_canvas, "output.ppm");
+    canvas_to_ppm(&new_canvas, "output.ppm");
     // Test Physics Sim thing
     Tuple black = color(0, 0, 0);
     char filename[25];
@@ -325,8 +334,8 @@ int main(int argc, char const *argv[])
         {-0.02901, -0.14630, -0.10926, 0.12963},
         {0.17778, 0.06667, -0.26667, 0.33333}};
     float out_inv2[4][4];
-
     mat_inverse(4, A2, out_inv2);
+
     // Test Matrix Translate
     float trans_mat[4][4];
     float rev_trans_mat[4][4];
@@ -341,6 +350,74 @@ int main(int argc, char const *argv[])
     assert(tuple_equal(some_point, origin));
 
     assert(mat_equal(4, expected_inv2, out_inv2));
+    // Scaling
+    float scale_mat[4][4];
+    mat_scale(2, 3, 4, scale_mat);
+    Tuple p_1 = point(-4, 6, 8);
+    Tuple v_1 = vector(-4, 6, 8);
+
+    Tuple scaled_point = mat_tuple_mult(scale_mat, p_1);
+    Tuple scaled_vector = mat_tuple_mult(scale_mat, v_1);
+
+    assert(tuple_equal(scaled_point, point(-8, 18, 32)));
+    assert(tuple_equal(scaled_vector, vector(-8, 18, 32)));
+
+    // Rotation
+    Tuple test_point = point(0, 1, 0);
+    float half_quarter[4][4];
+    float full_quarter[4][4];
+    // X Rotation
+    mat_rotate_x(M_PI / 4, half_quarter);
+    mat_rotate_x(M_PI / 2, full_quarter);
+
+    Tuple half_point = mat_tuple_mult(half_quarter, test_point);
+    Tuple quarter_point = mat_tuple_mult(full_quarter, test_point);
+
+    assert(tuple_equal(half_point, point(0, sqrtf(2) / 2.0, sqrtf(2) / 2)));
+    assert(tuple_equal(quarter_point, point(0, 0, 1)));
+
+    // Y Rotation
+    test_point = point(0, 0, 1);
+    mat_rotate_y(M_PI / 4, half_quarter);
+    mat_rotate_y(M_PI / 2, full_quarter);
+
+    half_point = mat_tuple_mult(half_quarter, test_point);
+    quarter_point = mat_tuple_mult(full_quarter, test_point);
+
+    assert(tuple_equal(half_point, point(sqrtf(2) / 2.0, 0, sqrtf(2) / 2)));
+    assert(tuple_equal(quarter_point, point(1, 0, 0)));
+
+    // Z Rotation
+    test_point = point(0, 1, 0);
+    mat_rotate_z(M_PI / 4, half_quarter);
+    mat_rotate_z(M_PI / 2, full_quarter);
+
+    half_point = mat_tuple_mult(half_quarter, test_point);
+    quarter_point = mat_tuple_mult(full_quarter, test_point);
+
+    assert(tuple_equal(half_point, point(-sqrtf(2) / 2.0, sqrtf(2) / 2, 0)));
+    assert(tuple_equal(quarter_point, point(-1, 0, 0)));
+    // Shearing
+    float sheer[4][4];
+    mat_sheer(0, 0, 0, 0, 0, 1, sheer);
+    test_point = point(2, 3, 4);
+    output = mat_tuple_mult(sheer, test_point);
+    assert(tuple_equal(output, point(2, 3, 7)));
+
+    mat_sheer(0, 1, 0, 0, 0, 0, sheer);
+    test_point = point(2, 3, 4);
+    output = mat_tuple_mult(sheer, test_point);
+    assert(tuple_equal(output, point(6, 3, 4)));
+
+    mat_sheer(0, 0, 1, 0, 0, 0, sheer);
+    test_point = point(2, 3, 4);
+    output = mat_tuple_mult(sheer, test_point);
+    assert(tuple_equal(output, point(2, 5, 4)));
+
+    mat_sheer(0, 0, 0, 1, 0, 0, sheer);
+    test_point = point(2, 3, 4);
+    output = mat_tuple_mult(sheer, test_point);
+    assert(tuple_equal(output, point(2, 7, 4)));
     // Everything passes
     puts("All checks pass.");
 }
@@ -458,7 +535,7 @@ void write_pixel(Canvas *can, int x, int y, Tuple col)
     (*can).canvas[x][y] = col;
 }
 
-char *canvas_to_ppm(Canvas *can, char *file_name)
+void canvas_to_ppm(Canvas *can, char *file_name)
 {
     char *ppm_data = malloc(sizeof(char) * 3 * can->width * can->height + 1);
 
@@ -484,9 +561,9 @@ char *canvas_to_ppm(Canvas *can, char *file_name)
             if (blue < 0)
                 blue = 0;
 
-            char r = (unsigned char)red;
-            char g = (unsigned char)green;
-            char b = (unsigned char)blue;
+            unsigned char r = (unsigned char)red;
+            unsigned char g = (unsigned char)green;
+            unsigned char b = (unsigned char)blue;
 
             pointer[0] = r;
             pointer[1] = g;
@@ -502,7 +579,8 @@ char *canvas_to_ppm(Canvas *can, char *file_name)
     fwrite(temp, 1, header_len, file);
     fwrite(ppm_data, 1, (can->width * can->height * 3) + 1, file);
     fclose(file);
-    return ppm_data;
+
+    free(ppm_data);
 }
 
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size])
@@ -521,7 +599,6 @@ bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size])
     return true;
 }
 
-// THIS HAS SIDE EFFECTS,
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size])
 {
     for (int i = 0; i < size; i++)
@@ -636,15 +713,77 @@ Tuple mat_tuple_mult(float mat[4][4], Tuple tup)
 
 void mat_translate(float x, float y, float z, float out[4][4])
 {
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 3; j++)
-        {
-            out[i][j] = 0.0f;
-        }
-        out[i][i] = 1.0f;
-    }
+    memset(out, 0, sizeof(float) * 16);
+    out[0][0] = 1;
+    out[1][1] = 1;
+    out[2][2] = 1;
+    out[3][3] = 1;
+
     out[0][3] = x;
     out[1][3] = y;
     out[2][3] = z;
+}
+
+void mat_scale(float x, float y, float z, float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+    out[0][0] = x;
+    out[1][1] = y;
+    out[2][2] = z;
+    out[3][3] = 1.0f;
+}
+
+void mat_rotate_x(float r, float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+    out[0][0] = 1.0f;
+    out[1][1] = cosf(r);
+    out[2][2] = cosf(r);
+    out[1][2] = -sinf(r);
+    out[2][1] = sinf(r);
+    out[3][3] = 1.0f;
+}
+
+void mat_rotate_y(float r, float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+    out[0][0] = cosf(r);
+    out[1][1] = 1.0;
+    out[2][2] = cosf(r);
+    out[3][3] = 1.0f;
+
+    out[2][0] = -sinf(r);
+    out[0][2] = sinf(r);
+}
+
+void mat_rotate_z(float r, float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+
+    out[0][0] = cosf(r);
+    out[1][1] = cosf(r);
+    out[2][2] = 1.0f;
+    out[3][3] = 1.0f;
+
+    out[0][1] = -sinf(r);
+    out[1][0] = sinf(r);
+}
+
+void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+
+    out[0][0] = 1;
+    out[1][1] = 1;
+    out[2][2] = 1;
+    out[3][3] = 1;
+
+    out[0][1] = a;
+    out[0][2] = b;
+
+    out[1][0] = c;
+    out[1][2] = d;
+
+    out[2][0] = e;
+    out[2][1] = f;
 }
