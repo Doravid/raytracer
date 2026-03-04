@@ -22,6 +22,12 @@ struct canvas
     int height;
 } typedef Canvas;
 
+struct ray
+{
+    Tuple position;
+    Tuple velocity;
+} typedef Ray;
+
 Tuple point(float x, float y, float z);
 Tuple vector(float x, float y, float z);
 bool equal(float x, float y);
@@ -57,7 +63,7 @@ void mat_rotate_z(float r, float out[4][4]);
 void mat_scale(float x, float y, float z, float out[4][4]);
 void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4][4]);
 
-int main(int argc, char const *argv[])
+void test_linear_algebra()
 {
     // Test Equality
     assert(!equal(0.2, 0.30000001));
@@ -786,4 +792,16 @@ void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4
 
     out[2][0] = e;
     out[2][1] = f;
+}
+
+Ray ray(Tuple origin, Tuple direction)
+{
+    Ray ret = {.position = origin, .velocity = direction};
+    return ret;
+}
+
+Tuple ray_position(Ray r, double time)
+{
+    Tuple distance_moved = tuple_scale(r.velocity, time);
+    return tuple_add(r.position, distance_moved);
 }
