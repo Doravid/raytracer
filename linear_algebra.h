@@ -4,29 +4,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
 
 #define EPSILON (0.00001)
-struct tuple
+typedef struct tuple
 {
     float x, y, z, w;
-} typedef Tuple;
+} Tuple;
 
-struct canvas
+typedef struct canvas
 {
     Tuple **canvas;
     int width;
     int height;
-} typedef Canvas;
+} Canvas;
 
-struct ray
+typedef struct ray
 {
     Tuple position;
-    Tuple velocity;
-} typedef Ray;
+    Tuple direction;
+} Ray;
+
+typedef struct sphere
+{
+    Tuple position;
+    float radius;
+} Sphere;
+
+typedef struct intersection_tuple
+{
+    int count;
+    float distances[2];
+} Intersection_tuple;
+typedef struct intersection
+{
+    float time;
+    void *object;
+} Intersection;
+
+typedef struct intersections
+{
+    int count;
+    Intersection *intersections;
+} Intersections;
 
 Tuple point(float x, float y, float z);
 Tuple vector(float x, float y, float z);
@@ -62,6 +86,13 @@ void mat_rotate_y(float r, float out[4][4]);
 void mat_rotate_z(float r, float out[4][4]);
 void mat_scale(float x, float y, float z, float out[4][4]);
 void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4][4]);
+Ray ray(Tuple origin, Tuple direction);
+Tuple ray_position(Ray r, double time);
+Sphere sphere();
+Intersections intersect(Sphere s, Ray r);
+Intersection intersection(float time, void *object);
+Intersections intersections(int count, ...);
+Intersection hit(Intersections inters);
 
 void test_linear_algebra()
 {
@@ -143,7 +174,7 @@ void test_linear_algebra()
     // Test Write to canvas
 
     write_pixel(&can, 1900, 1, color(1, 0.2, 0.3));
-    Tuple col = can.canvas[1900][1];
+    // Tuple col = can.canvas[1900][1];
     assert(tuple_equal(can.canvas[1900][1], color(1, 0.2, 0.3)));
 
     // Test write to ppm
@@ -160,8 +191,7 @@ void test_linear_algebra()
     }
     canvas_to_ppm(&new_canvas, "output.ppm");
     // Test Physics Sim thing
-    Tuple black = color(0, 0, 0);
-    char filename[25];
+    // Tuple black = color(0, 0, 0);
     Canvas physics_canvas = canvas(size, size);
     Tuple position = point(0, 0, 0);
     Tuple velocity = vector(5, 12, 0);
@@ -424,10 +454,56 @@ void test_linear_algebra()
     test_point = point(2, 3, 4);
     output = mat_tuple_mult(sheer, test_point);
     assert(tuple_equal(output, point(2, 7, 4)));
+    // Ray Tests
+    Ray ray_1 = ray(point(2, 3, 4), vector(1, 0, 0));
+    assert(tuple_equal(ray_position(ray_1, 0), point(2, 3, 4)));
+    assert(tuple_equal(ray_position(ray_1, 1), point(3, 3, 4)));
+    assert(tuple_equal(ray_position(ray_1, -1), point(1, 3, 4)));
+    assert(tuple_equal(ray_position(ray_1, 2.5), point(4.5, 3, 4)));
+
+    // Sphere Intersection Tests
+    Ray ray1 = ray(point(0, 0, 0), vector(0, 0, 1));
+    Sphere s = sphere();
+    Intersections xs = intersect(s, ray1);
+
+    assert(xs.count == 2);
+    assert(xs.intersections[0].time == -1.0);
+    assert(xs.intersections[1].time == 1.0);
+
+    Intersection i1 = intersection(1, &s);
+    Intersection i2 = intersection(2, &s);
+
+    Intersections my_intersections = intersections(2, i1, i2);
+
+    assert(my_intersections.intersections[0].time == 1);
+    assert(my_intersections.intersections[1].time == 2);
+    assert(my_intersections.intersections[0].object == &s);
+    assert(my_intersections.intersections[1].object == &s);
+
+    // Scenario: The hit is always the lowest nonnegative intersection
+    // Given s ← sphere()
+    // And i1 ← intersection(5, s)
+    // And i2 ← intersection(7, s)
+    // And i3 ← intersection(-3, s)
+    // And i4 ← intersection(2, s)
+    // And xs ← intersections(i1, i2, i3, i4)
+    // When i ← hit(xs)
+    // Then i = i4
+    Intersection int1 = intersection(5, &s);
+    Intersection int2 = intersection(7, &s);
+    Intersection int3 = intersection(-3, &s);
+    Intersection int4 = intersection(2, &s);
+    Intersections inters = intersections(4, int1, int2, int3, int4);
+
+    Intersection inter = hit(inters);
+
+    assert(inter.time == int4.time);
+    assert(inter.object == int4.object);
+
     // Everything passes
     puts("All checks pass.");
 }
-
+//
 // Create The Objects
 
 Tuple tuple(float x, float y, float z, float w)
@@ -796,12 +872,85 @@ void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4
 
 Ray ray(Tuple origin, Tuple direction)
 {
-    Ray ret = {.position = origin, .velocity = direction};
+    Ray ret = {.position = origin, .direction = direction};
     return ret;
 }
 
 Tuple ray_position(Ray r, double time)
 {
-    Tuple distance_moved = tuple_scale(r.velocity, time);
+    Tuple distance_moved = tuple_scale(r.direction, time);
     return tuple_add(r.position, distance_moved);
+}
+Sphere sphere()
+{
+    Sphere s = {.position = point(0, 0, 0), .radius = 1};
+    return s;
+}
+
+Intersections intersect(Sphere s, Ray ray)
+{
+    Intersections ret;
+    ret.count = 2;
+    Tuple sphere_to_ray = tuple_sub(ray.position, s.position);
+
+    float a = tuple_dot(ray.direction, ray.direction);
+    float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
+    float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1;
+
+    float discriminant = b * b - (4 * a * c);
+
+    if (discriminant < 0)
+    {
+        ret.count = 0;
+        return ret;
+    }
+
+    float t1 = (-1 * b - sqrt(discriminant)) / (2 * a);
+    float t2 = (-1 * b + sqrt(discriminant)) / (2 * a);
+    Intersection inter1 = intersection(t1, &s);
+    Intersection inter2 = intersection(t2, &s);
+
+    if (t1 > t2)
+        return intersections(2, inter2, inter1);
+    return intersections(2, inter1, inter2);
+}
+
+Intersection intersection(float time, void *object)
+{
+    Intersection ret = {.time = time, .object = object};
+    return ret;
+}
+int comp(const void *a, const void *b)
+{
+    return ((Intersection *)a)->time > ((Intersection *)b)->time;
+}
+
+// This function ensures that the intersections are sorted by their time variable.
+Intersections intersections(int count, ...)
+{
+    Intersections ret;
+    ret.count = count;
+    if (count <= 0)
+        return ret;
+    ret.intersections = malloc(count * sizeof(Intersection));
+
+    va_list args;
+    va_start(args, count);
+    for (int i = 0; i < count; i++)
+    {
+        ret.intersections[i] = va_arg(args, Intersection);
+    }
+    va_end(args);
+    qsort(ret.intersections, count, sizeof(Intersection), comp);
+    return ret;
+}
+
+Intersection hit(Intersections inters)
+{
+    for (int i = 0; i < inters.count; i++)
+    {
+        if (inters.intersections[i].time >= 0)
+            return inters.intersections[i];
+    }
+    return intersection(0, NULL);
 }
