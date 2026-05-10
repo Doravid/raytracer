@@ -33,6 +33,7 @@ typedef struct sphere
 {
     Tuple position;
     float radius;
+    float transform[4][4];
 } Sphere;
 
 typedef struct intersection_tuple
@@ -71,6 +72,7 @@ Tuple color(float red, float green, float blue);
 void write_pixel(Canvas *can, int x, int y, Tuple col);
 void canvas_to_ppm(Canvas *can, char *file_name);
 void write_ppm_to_file(char *data, int width, int height, char *file_name);
+void mat_identity(float mat[4][4]);
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size]);
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size]);
 void mat_transpose(int size, float mat_a[size][size], float mat_out[size][size]);
@@ -88,11 +90,13 @@ void mat_scale(float x, float y, float z, float out[4][4]);
 void mat_sheer(float a, float b, float c, float d, float e, float f, float out[4][4]);
 Ray ray(Tuple origin, Tuple direction);
 Tuple ray_position(Ray r, double time);
+Ray ray_transform(Ray r, float m[4][4]);
 Sphere sphere();
 Intersections intersect(Sphere s, Ray r);
 Intersection intersection(float time, void *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
+void set_transform(void *object, float m[4][4]);
 
 void test_linear_algebra()
 {
@@ -114,7 +118,6 @@ void test_linear_algebra()
     Tuple a2 = {.x = -2, .y = 3, .z = 1, .w = 0};
 
     Tuple a1_a2 = tuple_add(a1, a2);
-
     Tuple test_result1 = {.x = 1, .y = 1, .z = 6, .w = 1};
 
     assert(tuple_equal(a1_a2, test_result1));
@@ -481,14 +484,6 @@ void test_linear_algebra()
     assert(my_intersections.intersections[1].object == &s);
 
     // Scenario: The hit is always the lowest nonnegative intersection
-    // Given s ← sphere()
-    // And i1 ← intersection(5, s)
-    // And i2 ← intersection(7, s)
-    // And i3 ← intersection(-3, s)
-    // And i4 ← intersection(2, s)
-    // And xs ← intersections(i1, i2, i3, i4)
-    // When i ← hit(xs)
-    // Then i = i4
     Intersection int1 = intersection(5, &s);
     Intersection int2 = intersection(7, &s);
     Intersection int3 = intersection(-3, &s);
@@ -500,8 +495,41 @@ void test_linear_algebra()
     assert(inter.time == int4.time);
     assert(inter.object == int4.object);
 
-    // Everything passes
-    puts("All checks pass.");
+    // Scenario: Translating a ray
+
+    Ray r1 = ray(point(1, 2, 3), vector(0, 1, 0));
+    float m[4][4];
+    mat_translate(3, 4, 5, m);
+    Ray r2 = ray_transform(r1, m);
+    assert(tuple_equal(r2.position, point(4, 6, 8)));
+    assert(tuple_equal(r2.direction, vector(0, 1, 0)));
+
+    // Scenario: Scaling a ray
+    r1 = ray(point(1, 2, 3), vector(0, 1, 0));
+    mat_scale(2, 3, 4, m);
+    r2 = ray_transform(r1, m);
+    assert(tuple_equal(r2.position, point(2, 6, 12)));
+    assert(tuple_equal(r2.direction, vector(0, 3, 0)));
+    // Scenario: A sphere's default transformation
+    s = sphere();
+    mat_identity(m);
+    assert(mat_equal(4, s.transform, m));
+
+    // Scenario: Changing a sphere's transformation
+    mat_translate(2, 3, 4, m);
+    set_transform(&s, m);
+    assert(mat_equal(4, s.transform, m));
+
+    // Scenario: Intersecting a scaled sphere with a ray
+    Ray r = ray(point(0, 0, -5), vector(0, 0, 1));
+    s = sphere();
+    mat_scale(2, 2, 2, m);
+    set_transform(&s, m);
+    xs = intersect(s, r);
+    assert(xs.count == 2);
+    assert(xs.count == 2);
+    assert(xs.intersections[0].time == 3);
+    assert(xs.intersections[1].time == 7);
 }
 //
 // Create The Objects
@@ -544,7 +572,6 @@ Canvas canvas(int width, int height)
 
 // Equality Checks
 bool equal(float x, float y) { return (fabsf(x - y) < EPSILON); }
-
 bool tuple_equal(Tuple a, Tuple b)
 {
     return (equal(a.x, b.x) && equal(a.y, b.y) && equal(a.z, b.z) &&
@@ -629,7 +656,6 @@ void canvas_to_ppm(Canvas *can, char *file_name)
             int red = (int)(can->canvas[j][i].x * 255);
             int green = (int)(can->canvas[j][i].y * 255);
             int blue = (int)(can->canvas[j][i].z * 255);
-
             if (red > 255)
                 red = 255;
             if (red < 0)
@@ -664,7 +690,14 @@ void canvas_to_ppm(Canvas *can, char *file_name)
 
     free(ppm_data);
 }
-
+void mat_identity(float out[4][4])
+{
+    memset(out, 0, sizeof(float) * 16);
+    out[0][0] = 1;
+    out[1][1] = 1;
+    out[2][2] = 1;
+    out[3][3] = 1;
+}
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size])
 {
     for (int i = 0; i < size; i++)
@@ -883,12 +916,15 @@ Tuple ray_position(Ray r, double time)
 }
 Sphere sphere()
 {
-    Sphere s = {.position = point(0, 0, 0), .radius = 1};
+    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
     return s;
 }
 
-Intersections intersect(Sphere s, Ray ray)
+Intersections intersect(Sphere s, Ray r1)
 {
+    float m[4][4];
+    mat_inverse(4, s.transform, m);
+    Ray ray = ray_transform(r1, m);
     Intersections ret;
     ret.count = 2;
     Tuple sphere_to_ray = tuple_sub(ray.position, s.position);
@@ -953,4 +989,15 @@ Intersection hit(Intersections inters)
             return inters.intersections[i];
     }
     return intersection(0, NULL);
+}
+
+Ray ray_transform(Ray r, float m[4][4])
+{
+    r.position = mat_tuple_mult(m, r.position);
+    r.direction = mat_tuple_mult(m, r.direction);
+    return r;
+}
+void set_transform(void *object, float m[4][4])
+{
+    memcpy((((Sphere *)object)->transform), m, sizeof(((Sphere *)object)->transform));
 }
