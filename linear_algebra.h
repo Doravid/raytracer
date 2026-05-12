@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <stdarg.h>
 
 #ifndef M_PI
@@ -71,7 +72,7 @@ Canvas canvas(int width, int height);
 Tuple color(float red, float green, float blue);
 void write_pixel(Canvas *can, int x, int y, Tuple col);
 void canvas_to_ppm(Canvas *can, char *file_name);
-void write_ppm_to_file(char *data, int width, int height, char *file_name);
+// void write_ppm_to_file(char *data, int width, int height, char *file_name);
 void mat_identity(float mat[4][4]);
 bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size]);
 void mat_mult(int size, float mat_a[size][size], float mat_b[size][size], float mat_out[size][size]);
@@ -199,7 +200,7 @@ void test_linear_algebra()
     Tuple position = point(0, 0, 0);
     Tuple velocity = vector(5, 12, 0);
 
-    Tuple acceleration = vector(-0.15, -1, 0);
+    Tuple acceleration = vector(0.15, -1.5, 0);
     const int MAX_STEPS = 30;
     for (int i = 0; i < MAX_STEPS; ++i)
     {
@@ -530,6 +531,42 @@ void test_linear_algebra()
     assert(xs.count == 2);
     assert(xs.intersections[0].time == 3);
     assert(xs.intersections[1].time == 7);
+
+    // A program that casts rays at a sphere and draw the picture to a canvas.
+    const int SIZE = 720;
+    Canvas my_canvas = canvas(SIZE, SIZE);
+
+    // We want to define a point, say (0, 0) that will be the origin of all of our rays.
+    // Then we will have a screen be say 1 unit in front of our point.
+    // The circle will then be one unit in front of the screen
+    // We will check if the vector from our point (0,0) to the given pixel on the screen intersects with the sphere.
+    Tuple camera_origin = point(0, 0, 0);
+    Tuple pixel_point, camera_vector;
+    Ray color_ray;
+    Sphere cool_red_sphere = sphere();
+    Tuple black = color(0, 0, 0);
+    float sphere_mat[4][4];
+
+    mat_translate(0, 0, 2.0, sphere_mat);
+    set_transform(&cool_red_sphere, sphere_mat);
+
+    for (int x = 0; x < SIZE; x++)
+    {
+        for (int y = 0; y < SIZE; y++)
+        {
+            // float offset = (float)rand() / (float)RAND_MAX;
+            pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
+            camera_vector = tuple_sub(pixel_point, camera_origin);
+            color_ray = ray(camera_origin, camera_vector);
+
+            Intersections sphere_intersects = intersect(cool_red_sphere, color_ray);
+            if (sphere_intersects.count > 0)
+                my_canvas.canvas[x][y] = red;
+            else
+                my_canvas.canvas[x][y] = black;
+        }
+    }
+    canvas_to_ppm(&my_canvas, "cool_circle.ppm");
 }
 //
 // Create The Objects

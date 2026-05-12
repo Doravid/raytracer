@@ -1,8 +1,8 @@
 CC = clang
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -o2
 TARGET = raytracer
 SRCS = main.c
-DEPS = linear_algebra.h
+DEPS = linear_algebra.h Makefile
 
 all: $(TARGET)
 
