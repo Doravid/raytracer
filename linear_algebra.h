@@ -98,6 +98,7 @@ Intersection intersection(float time, void *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
 void set_transform(void *object, float m[4][4]);
+Tuple sphere_normal_at(Sphere s, Tuple p);
 
 void test_linear_algebra()
 {
@@ -533,7 +534,7 @@ void test_linear_algebra()
     assert(xs.intersections[1].time == 7);
 
     // A program that casts rays at a sphere and draw the picture to a canvas.
-    const int SIZE = 720;
+    const int SIZE = 100;
     Canvas my_canvas = canvas(SIZE, SIZE);
 
     // We want to define a point, say (0, 0) that will be the origin of all of our rays.
@@ -567,6 +568,17 @@ void test_linear_algebra()
         }
     }
     canvas_to_ppm(&my_canvas, "cool_circle.ppm");
+
+    // Scenario: The normal on a sphere at a nonaxial point
+    s = sphere();
+    Tuple normal = sphere_normal_at(s, point(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3));
+    assert(tuple_equal(normal, vector(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3)));
+    // Scenario: Computing the normal on a translated sphere
+    s = sphere();
+    mat_translate(0, 1, 0, sphere_mat);
+    set_transform(&s, sphere_mat);
+    normal = sphere_normal_at(s, point(0, 1.70711, -0.70711));
+    assert(tuple_equal(normal, vector(0, 0.70711, -0.70711)));
 }
 //
 // Create The Objects
@@ -1037,4 +1049,17 @@ Ray ray_transform(Ray r, float m[4][4])
 void set_transform(void *object, float m[4][4])
 {
     memcpy((((Sphere *)object)->transform), m, sizeof(((Sphere *)object)->transform));
+}
+
+Tuple sphere_normal_at(Sphere s, Tuple p)
+{
+    float mat[4][4];
+    float mat2[4][4];
+    mat_inverse(4, s.transform, mat);
+    Tuple object_point = mat_tuple_mult(mat, p);
+    Tuple object_normal = tuple_sub(object_point, point(0, 0, 0));
+    mat_transpose(4, mat, mat2);
+    Tuple world_normal = mat_tuple_mult(mat2, object_normal);
+    world_normal.w = 0;
+    return tuple_normalize(world_normal);
 }
