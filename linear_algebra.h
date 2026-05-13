@@ -54,6 +54,12 @@ typedef struct intersections
     Intersection *intersections;
 } Intersections;
 
+typedef struct point_light
+{
+    Tuple color;
+    Tuple position;
+} PointLight;
+
 Tuple point(float x, float y, float z);
 Tuple vector(float x, float y, float z);
 bool equal(float x, float y);
@@ -99,6 +105,7 @@ Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
 void set_transform(void *object, float m[4][4]);
 Tuple sphere_normal_at(Sphere s, Tuple p);
+Tuple reflect(Tuple incoming, Tuple normal);
 
 void test_linear_algebra()
 {
@@ -579,6 +586,17 @@ void test_linear_algebra()
     set_transform(&s, sphere_mat);
     normal = sphere_normal_at(s, point(0, 1.70711, -0.70711));
     assert(tuple_equal(normal, vector(0, 0.70711, -0.70711)));
+
+    // Scenario: Reflecting a vector approaching at 45°
+    v = vector(1, -1, 0);
+    Tuple n = vector(0, 1, 0);
+    Tuple res = reflect(v, n);
+
+    // Scenario: Reflecting a vector off a slanted surface
+    v = vector(0, -1, 0);
+    n = vector(sqrt(2) / 2, sqrt(2) / 2, 0);
+    res = reflect(v, n);
+    assert(tuple_equal(res, vector(1, 0, 0)));
 }
 //
 // Create The Objects
@@ -1062,4 +1080,15 @@ Tuple sphere_normal_at(Sphere s, Tuple p)
     Tuple world_normal = mat_tuple_mult(mat2, object_normal);
     world_normal.w = 0;
     return tuple_normalize(world_normal);
+}
+
+Tuple reflect(Tuple incoming, Tuple normal)
+{
+    return tuple_sub(incoming, tuple_scale(normal, 2 * tuple_dot(incoming, normal)));
+}
+
+PointLight point_light(Tuple position, Tuple intensity)
+{
+    PointLight light = {.color = intensity, .position = position};
+    return light;
 }
