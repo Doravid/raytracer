@@ -5,18 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
-#include <stdalign.h>
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
 
 #define EPSILON (0.0001)
-
-typedef struct
-{
-    alignas(32) float m[16];
-} Matrix4x4;
 
 typedef struct tuple
 {
@@ -35,17 +29,18 @@ typedef struct ray
     Tuple position;
     Tuple direction;
 } Ray;
+
 typedef struct material
 {
     Tuple color;
     float ambient, diffuse, specular, shininess;
 } Material;
+
 typedef struct sphere
 {
     Tuple position;
     float radius;
     float transform[16];
-    float inverse_transform[16];
     Material material;
 } Sphere;
 
@@ -54,6 +49,7 @@ typedef struct intersection_tuple
     int count;
     float distances[2];
 } Intersection_tuple;
+
 typedef struct intersection
 {
     float time;
@@ -124,51 +120,40 @@ PointLight point_light(Tuple position, Tuple intensity);
 
 void test_linear_algebra()
 {
-    // Test Equality
     assert(!equal(0.2, 0.30000001));
     assert(equal(0.2, 0.20000001));
-    // Vector and Point Init Tests
+
     Tuple tup1 = {.x = 4, .y = -4, .z = 3, .w = 1};
     Tuple point_a = point(4, -4, 3);
     assert(tuple_equal(tup1, point_a));
 
     Tuple tup2 = {.x = 4, .y = -4, .z = 3, .w = 0};
     Tuple vector_a = vector(4, -4, 3);
-
     assert(tuple_equal(tup2, vector_a));
 
-    // Vector and Point addition tests.
     Tuple a1 = {.x = 3, .y = -2, .z = 5, .w = 1};
     Tuple a2 = {.x = -2, .y = 3, .z = 1, .w = 0};
-
     Tuple a1_a2 = tuple_add(a1, a2);
     Tuple test_result1 = {.x = 1, .y = 1, .z = 6, .w = 1};
-
     assert(tuple_equal(a1_a2, test_result1));
-
-    // Vector and Point subtraction tests.
 
     Tuple p1 = point(3, 2, 1);
     Tuple p2 = point(5, 6, 7);
     Tuple p1_p2 = tuple_sub(p1, p2);
-
     assert(tuple_equal(p1_p2, vector(-2, -4, -6)));
-    // Tuple Negation Test
+
     Tuple a = tuple(1, -2, 3, -4);
     Tuple a_neg = tuple_negate(a);
     assert(tuple_equal(a_neg, tuple(-1, 2, -3, 4)));
 
-    // Tuple Scale Test
     Tuple b = tuple_scale(a, 3.5);
     Tuple result = tuple(3.5, -7, 10.5, -14);
     assert(tuple_equal(result, b));
 
-    // Tuple Divide Test
     Tuple c = tuple_divide(a, 2);
     result = tuple(0.5, -1, 1.5, -2);
     assert(tuple_equal(result, c));
 
-    // Tuple Magnitude Checks
     Tuple v1 = vector(1, 0, 0);
     Tuple v2 = vector(0, 1, 0);
     Tuple v3 = vector(0, 0, 1);
@@ -180,31 +165,24 @@ void test_linear_algebra()
     assert(tuple_magnitude(v4) == sqrtf(14));
     assert(tuple_magnitude(v5) == sqrtf(14));
 
-    // Tuple normalize Tests
     Tuple v = vector(4, 0, 0);
     Tuple normalized = vector(1, 0, 0);
     assert(tuple_equal((tuple_normalize(v)), normalized));
-    // Tuple dot product test
+
     a = vector(1, 2, 3);
     b = vector(2, 3, 4);
     assert(tuple_dot(a, b) == 20);
 
-    // Tuple cross product test
     assert(tuple_equal(tuple_cross(a, b), vector(-1, 2, -1)));
     assert(tuple_equal(tuple_cross(b, a), vector(1, -2, 1)));
 
-    // Test Canvas
     Canvas can = canvas(1920, 2);
     Tuple my_color = can.canvas[0][0];
     assert(tuple_equal(my_color, color(0, 0, 0)));
 
-    // Test Write to canvas
-
     write_pixel(&can, 1900, 1, color(1, 0.2, 0.3));
-    // Tuple col = can.canvas[1900][1];
     assert(tuple_equal(can.canvas[1900][1], color(1, 0.2, 0.3)));
 
-    // Test write to ppm
     const int size = 80;
     Canvas new_canvas = canvas(size, size);
     Tuple red = color(0.9, 0.3, 0.3);
@@ -217,20 +195,17 @@ void test_linear_algebra()
         }
     }
     canvas_to_ppm(&new_canvas, "output.ppm");
-    // Test Physics Sim thing
-    // Tuple black = color(0, 0, 0);
+
     Canvas physics_canvas = canvas(size, size);
     Tuple position = point(0, 0, 0);
     Tuple velocity = vector(5, 12, 0);
-
     Tuple acceleration = vector(0.15, -1.5, 0);
     const int MAX_STEPS = 30;
+
     for (int i = 0; i < MAX_STEPS; ++i)
     {
-
         int x = (int)position.x;
         int y = (int)position.y;
-
         if (x >= 0 && x < size && y >= 0 && y < size)
         {
             physics_canvas.canvas[x][size - y - 1] = red;
@@ -239,7 +214,7 @@ void test_linear_algebra()
         velocity = tuple_add(velocity, acceleration);
     }
     canvas_to_ppm(&physics_canvas, "physics.ppm");
-    // Test Matrix
+
     float my_matrix[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
     float my_matrix2[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
     float my_matrix3[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.54};
@@ -250,32 +225,29 @@ void test_linear_algebra()
 
     assert(mat_equal(4, my_matrix, my_matrix2));
     assert(!mat_equal(4, my_matrix, my_matrix3));
-    // Test Matrix Mult
+
     float mat_1[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2};
     float mat_2[16] = {-2, 1, 2, 3, 3, 2, 1, -1, 4, 3, 6, 5, 1, 2, 7, 8};
-
     float res_matrix[16];
     mat_mult(4, mat_1, mat_2, res_matrix);
 
     float my_mat[16] = {20, 22, 50, 48, 44, 54, 114, 108, 40, 58, 110, 102, 16, 26, 46, 42};
     assert(mat_equal(4, my_mat, res_matrix));
 
-    // Test Matrix x Tuple
     float mat_tuple[16] = {1, 2, 3, 4, 2, 4, 4, 2, 8, 6, 4, 1, 0, 0, 0, 1};
     Tuple my_tuple = tuple(1, 2, 3, 1);
     Tuple res_tuple = mat_tuple_mult(mat_tuple, my_tuple);
     assert(tuple_equal(res_tuple, tuple(18, 24, 33, 1)));
 
-    // Test Identity
     float identity_matrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
     mat_mult(4, mat_1, identity_matrix, res_matrix);
     assert(mat_equal(4, mat_1, res_matrix));
-    // Test Transpose
+
     float mat_a[16] = {0, 9, 3, 0, 9, 8, 0, 8, 1, 8, 5, 3, 0, 0, 5, 8};
     float transpose_mat_a[16] = {0, 9, 1, 0, 9, 8, 8, 0, 3, 0, 5, 5, 0, 8, 3, 8};
     mat_transpose(4, mat_a, res_matrix);
     assert(mat_equal(4, transpose_mat_a, res_matrix));
-    // Test Submatrix
+
     float mat_3_3[9] = {1, 5, 0, -3, 2, 7, 0, 6, -3};
     float res_2_2[4];
     submatrix(3, mat_3_3, res_2_2, 0, 2);
@@ -287,14 +259,14 @@ void test_linear_algebra()
     submatrix(4, mat_b, res_3_3, 2, 1);
     float ref_3_3[9] = {-6, 1, 6, -8, 8, 6, -7, -1, 1};
     assert(mat_equal(3, ref_3_3, res_3_3));
-    // Test Matrix DET
+
     float A[9] = {1, 2, 6, -5, 8, -4, 2, 6, 4};
     float B[16] = {-2, -8, 3, 5, -3, 1, 7, 3, 1, 2, -9, 6, -6, 7, 7, -9};
     float x_val = mat_det(3, A);
     float y_val = mat_det(4, B);
     assert(x_val == -196);
     assert(y_val == -4071);
-    // Test Matrix Inverse
+
     float A1[16] = {8, -5, 9, 2, 7, 5, 6, 1, -6, 0, 9, 6, -3, 0, -9, -4};
     float expected_inv1[16] = {-0.15385, -0.15385, -0.28205, -0.53846, -0.07692, 0.12308, 0.02564, 0.03077, 0.35897, 0.35897, 0.43590, 0.92308, -0.69231, -0.69231, -0.76923, -1.92308};
     float out_inv1[16];
@@ -306,7 +278,6 @@ void test_linear_algebra()
     float out_inv2[16];
     mat_inverse(4, A2, out_inv2);
 
-    // Test Matrix Translate
     float trans_mat[16];
     float rev_trans_mat[16];
     mat_translate(5, -3, 2, trans_mat);
@@ -318,9 +289,8 @@ void test_linear_algebra()
 
     assert(tuple_equal(output, point(2, 1, 7)));
     assert(tuple_equal(some_point, origin));
-
     assert(mat_equal(4, expected_inv2, out_inv2));
-    // Scaling
+
     float scale_mat[16];
     mat_scale(2, 3, 4, scale_mat);
     Tuple p_1 = point(-4, 6, 8);
@@ -332,42 +302,33 @@ void test_linear_algebra()
     assert(tuple_equal(scaled_point, point(-8, 18, 32)));
     assert(tuple_equal(scaled_vector, vector(-8, 18, 32)));
 
-    // Rotation
     Tuple test_point = point(0, 1, 0);
     float half_quarter[16];
     float full_quarter[16];
-    // X Rotation
+
     mat_rotate_x(M_PI / 4, half_quarter);
     mat_rotate_x(M_PI / 2, full_quarter);
-
     Tuple half_point = mat_tuple_mult(half_quarter, test_point);
     Tuple quarter_point = mat_tuple_mult(full_quarter, test_point);
-
     assert(tuple_equal(half_point, point(0, sqrtf(2) / 2.0, sqrtf(2) / 2)));
     assert(tuple_equal(quarter_point, point(0, 0, 1)));
 
-    // Y Rotation
     test_point = point(0, 0, 1);
     mat_rotate_y(M_PI / 4, half_quarter);
     mat_rotate_y(M_PI / 2, full_quarter);
-
     half_point = mat_tuple_mult(half_quarter, test_point);
     quarter_point = mat_tuple_mult(full_quarter, test_point);
-
     assert(tuple_equal(half_point, point(sqrtf(2) / 2.0, 0, sqrtf(2) / 2)));
     assert(tuple_equal(quarter_point, point(1, 0, 0)));
 
-    // Z Rotation
     test_point = point(0, 1, 0);
     mat_rotate_z(M_PI / 4, half_quarter);
     mat_rotate_z(M_PI / 2, full_quarter);
-
     half_point = mat_tuple_mult(half_quarter, test_point);
     quarter_point = mat_tuple_mult(full_quarter, test_point);
-
     assert(tuple_equal(half_point, point(-sqrtf(2) / 2.0, sqrtf(2) / 2, 0)));
     assert(tuple_equal(quarter_point, point(-1, 0, 0)));
-    // Shearing
+
     float sheer[16];
     mat_sheer(0, 0, 0, 0, 0, 1, sheer);
     test_point = point(2, 3, 4);
@@ -388,45 +349,36 @@ void test_linear_algebra()
     test_point = point(2, 3, 4);
     output = mat_tuple_mult(sheer, test_point);
     assert(tuple_equal(output, point(2, 7, 4)));
-    // Ray Tests
+
     Ray ray_1 = ray(point(2, 3, 4), vector(1, 0, 0));
     assert(tuple_equal(ray_position(ray_1, 0), point(2, 3, 4)));
     assert(tuple_equal(ray_position(ray_1, 1), point(3, 3, 4)));
     assert(tuple_equal(ray_position(ray_1, -1), point(1, 3, 4)));
     assert(tuple_equal(ray_position(ray_1, 2.5), point(4.5, 3, 4)));
 
-    // Sphere Intersection Tests
     Ray ray1 = ray(point(0, 0, 0), vector(0, 0, 1));
     Sphere s = sphere();
     Intersections xs = intersect(&s, ray1);
-
     assert(xs.count == 2);
     assert(xs.intersections[0].time == -1.0);
     assert(xs.intersections[1].time == 1.0);
 
     Intersection i1 = intersection(1, &s);
     Intersection i2 = intersection(2, &s);
-
     Intersections my_intersections = intersections(2, i1, i2);
-
     assert(my_intersections.intersections[0].time == 1);
     assert(my_intersections.intersections[1].time == 2);
     assert(my_intersections.intersections[0].object == &s);
     assert(my_intersections.intersections[1].object == &s);
 
-    // Scenario: The hit is always the lowest nonnegative intersection
     Intersection int1 = intersection(5, &s);
     Intersection int2 = intersection(7, &s);
     Intersection int3 = intersection(-3, &s);
     Intersection int4 = intersection(2, &s);
     Intersections inters = intersections(4, int1, int2, int3, int4);
-
     Intersection inter = hit(inters);
-
     assert(inter.time == int4.time);
     assert(inter.object == int4.object);
-
-    // Scenario: Translating a ray
 
     Ray r1 = ray(point(1, 2, 3), vector(0, 1, 0));
     float m[16];
@@ -435,41 +387,31 @@ void test_linear_algebra()
     assert(tuple_equal(r2.position, point(4, 6, 8)));
     assert(tuple_equal(r2.direction, vector(0, 1, 0)));
 
-    // Scenario: Scaling a ray
     r1 = ray(point(1, 2, 3), vector(0, 1, 0));
     mat_scale(2, 3, 4, m);
     r2 = ray_transform(r1, m);
     assert(tuple_equal(r2.position, point(2, 6, 12)));
     assert(tuple_equal(r2.direction, vector(0, 3, 0)));
-    // Scenario: A sphere's default transformation
+
     s = sphere();
     mat_identity(m);
     assert(mat_equal(4, s.transform, m));
 
-    // Scenario: Changing a sphere's transformation
     mat_translate(2, 3, 4, m);
     set_transform(&s, m);
     assert(mat_equal(4, s.transform, m));
 
-    // Scenario: Intersecting a scaled sphere with a ray
     Ray r = ray(point(0, 0, -5), vector(0, 0, 1));
     s = sphere();
     mat_scale(2, 2, 2, m);
     set_transform(&s, m);
     xs = intersect(&s, r);
     assert(xs.count == 2);
-    assert(xs.count == 2);
     assert(xs.intersections[0].time == 3);
     assert(xs.intersections[1].time == 7);
 
-    // A program that casts rays at a sphere and draw the picture to a canvas.
     const int SIZE = 554;
     Canvas my_canvas = canvas(SIZE, SIZE);
-
-    // We want to define a point, say (0, 0) that will be the origin of all of our rays.
-    // Then we will have a screen be say 1 unit in front of our point.
-    // The circle will then be one unit in front of the screen
-    // We will check if the vector from our point (0,0) to the given pixel on the screen intersects with the sphere.
     Tuple camera_origin = point(0, 0, 0);
     Tuple pixel_point, camera_vector;
     Ray color_ray;
@@ -480,68 +422,57 @@ void test_linear_algebra()
     mat_translate(0, 0, 2.0, sphere_mat);
     set_transform(&cool_red_sphere, sphere_mat);
 
-    // for (int x = 0; x < SIZE; x++)
-    // {
-    //     for (int y = 0; y < SIZE; y++)
-    //     {
-    //         pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
-    //         camera_vector = tuple_sub(pixel_point, camera_origin);
-    //         color_ray = ray(camera_origin, camera_vector);
+    for (int x = 0; x < SIZE; x++)
+    {
+        for (int y = 0; y < SIZE; y++)
+        {
+            pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
+            camera_vector = tuple_sub(pixel_point, camera_origin);
+            color_ray = ray(camera_origin, camera_vector);
 
-    //         Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
-    //         if (sphere_intersects.count > 0)
-    //             my_canvas.canvas[x][y] = red;
-    //         else
-    //             my_canvas.canvas[x][y] = black;
-    //     }
-    // }
-    // canvas_to_ppm(&my_canvas, "cool_circle.ppm");
+            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
+            if (sphere_intersects.count > 0)
+                my_canvas.canvas[x][y] = red;
+            else
+                my_canvas.canvas[x][y] = black;
+        }
+    }
+    canvas_to_ppm(&my_canvas, "cool_circle.ppm");
 
-    // Scenario: The normal on a sphere at a nonaxial point
     s = sphere();
     Tuple normal = sphere_normal_at(s, point(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3));
     assert(tuple_equal(normal, vector(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3)));
-    // Scenario: Computing the normal on a translated sphere
+
     s = sphere();
     mat_translate(0, 1, 0, sphere_mat);
     set_transform(&s, sphere_mat);
     normal = sphere_normal_at(s, point(0, 1.70711, -0.70711));
     assert(tuple_equal(normal, vector(0, 0.70711, -0.70711)));
 
-    // Scenario: Reflecting a vector approaching at 45°
     v = vector(1, -1, 0);
     Tuple n = vector(0, 1, 0);
     Tuple res = reflect(v, n);
 
-    // Scenario: Reflecting a vector off a slanted surface
     v = vector(0, -1, 0);
     n = vector(sqrt(2) / 2, sqrt(2) / 2, 0);
     res = reflect(v, n);
     assert(tuple_equal(res, vector(1, 0, 0)));
 
-    // Scenario: A sphere has a default material
     s = sphere();
     Material material_1 = s.material;
     assert(materials_equal(material_1, material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)));
 
-    // Scenario: Lighting with the eye between the light and the surface
-
     Tuple eyev = vector(0, 0, -1);
     Tuple normalv = vector(0, 0, -1);
     PointLight light = point_light(point(0, 0, -10), color(1, 1, 1));
-
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
-
     assert(tuple_equal(color(1.9, 1.9, 1.9), result));
 
-    // Scenario: Lighting with eye in the path of the reflection vector
     eyev = vector(0, -sqrt(2) / 2, -sqrt(2) / 2);
     normalv = vector(0, 0, -1);
     light = point_light(point(0, 10, -10), color(1, 1, 1));
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
-
-    // Put it together Chapter 6
 
     camera_origin = point(0, 0, 0);
     cool_red_sphere = sphere();
@@ -565,37 +496,38 @@ void test_linear_algebra()
             {
                 float hit_time = sphere_intersects.intersections[0].time;
                 Sphere *hit_object = (Sphere *)sphere_intersects.intersections[0].object;
-
                 Tuple hit_pos = ray_position(color_ray, hit_time);
                 Tuple s_normal = sphere_normal_at(*hit_object, hit_pos);
                 Tuple eye = tuple_negate(color_ray.direction);
-
                 my_canvas.canvas[x][y] = lighting(hit_object->material, my_point_light, hit_pos, eye, s_normal);
             }
             else
+            {
                 my_canvas.canvas[x][y] = black;
+            }
         }
     }
     canvas_to_ppm(&my_canvas, "cooler_circle.ppm");
 }
-//
-// Create The Objects
 
 Tuple tuple(float x, float y, float z, float w)
 {
     Tuple tup = {.x = x, .y = y, .z = z, .w = w};
     return tup;
 }
+
 Tuple point(float x, float y, float z)
 {
     Tuple new_point = {.x = x, .y = y, .z = z, .w = 1};
     return new_point;
 }
+
 Tuple vector(float x, float y, float z)
 {
     Tuple new_point = {.x = x, .y = y, .z = z, .w = 0};
     return new_point;
 }
+
 Tuple color(float red, float green, float blue)
 {
     Tuple new_point = {.x = red, .y = green, .z = blue, .w = 0};
@@ -617,45 +549,43 @@ Canvas canvas(int width, int height)
     return c;
 }
 
-// Equality Checks
-bool equal(float x, float y) { return (fabsf(x - y) < EPSILON); }
+bool equal(float x, float y)
+{
+    return (fabsf(x - y) < EPSILON);
+}
+
 bool tuple_equal(Tuple a, Tuple b)
 {
-    return (equal(a.x, b.x) && equal(a.y, b.y) && equal(a.z, b.z) &&
-            equal(a.w, b.w));
+    return (equal(a.x, b.x) && equal(a.y, b.y) && equal(a.z, b.z) && equal(a.w, b.w));
 }
-// Helper Functions
 
 Tuple tuple_add(Tuple a, Tuple b)
 {
     Tuple x = {.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w};
     return x;
 }
+
 Tuple tuple_sub(Tuple a, Tuple b)
 {
     Tuple x = {.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z, .w = a.w - b.w};
     return x;
 }
+
 Tuple tuple_negate(Tuple a)
 {
     Tuple x = {.x = -a.x, .y = -a.y, .z = -a.z, .w = -a.w};
     return x;
 }
+
 Tuple tuple_scale(Tuple a, float scaler)
 {
-    Tuple x = {.x = a.x * scaler,
-               .y = a.y * scaler,
-               .z = a.z * scaler,
-               .w = a.w * scaler};
+    Tuple x = {.x = a.x * scaler, .y = a.y * scaler, .z = a.z * scaler, .w = a.w * scaler};
     return x;
 }
 
 Tuple tuple_divide(Tuple a, float divisor)
 {
-    Tuple x = {.x = a.x / divisor,
-               .y = a.y / divisor,
-               .z = a.z / divisor,
-               .w = a.w / divisor};
+    Tuple x = {.x = a.x / divisor, .y = a.y / divisor, .z = a.z / divisor, .w = a.w / divisor};
     return x;
 }
 
@@ -671,11 +601,12 @@ Tuple tuple_normalize(Tuple a)
     Tuple b = tuple_divide(a, length);
     return b;
 }
+
 Tuple tuple_cross(Tuple a, Tuple b)
 {
-    return vector(a.y * b.z - (a.z * b.y), a.z * b.x - (a.x * b.z),
-                  (a.x * b.y) - (a.y * b.x));
+    return vector(a.y * b.z - (a.z * b.y), a.z * b.x - (a.x * b.z), (a.x * b.y) - (a.y * b.x));
 }
+
 float tuple_dot(Tuple a, Tuple b)
 {
     return (a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
@@ -694,7 +625,6 @@ void write_pixel(Canvas *can, int x, int y, Tuple col)
 void canvas_to_ppm(Canvas *can, char *file_name)
 {
     char *ppm_data = malloc(sizeof(char) * 3 * can->width * can->height + 1);
-
     char *pointer = ppm_data;
     for (int i = 0; i < can->height; i++)
     {
@@ -730,13 +660,12 @@ void canvas_to_ppm(Canvas *can, char *file_name)
     FILE *file = fopen(file_name, "wb");
     char temp[50];
     int header_len = sprintf(temp, "P6\n%d %d\n255\n", can->width, can->height);
-
     fwrite(temp, 1, header_len, file);
     fwrite(ppm_data, 1, (can->width * can->height * 3) + 1, file);
     fclose(file);
-
     free(ppm_data);
 }
+
 void mat_identity(float *out)
 {
     memset(out, 0, sizeof(float) * 16);
@@ -745,6 +674,7 @@ void mat_identity(float *out)
     out[10] = 1;
     out[15] = 1;
 }
+
 bool mat_equal(int size, float *mat_a, float *mat_b)
 {
     for (int i = 0; i < size * size; i++)
@@ -814,6 +744,7 @@ void submatrix(int size, float *mat_a, float *mat_out, int remove_row, int remov
         new_row++;
     }
 }
+
 float mat_det_4x4(float *m)
 {
     return m[3] * m[6] * m[9] * m[12] - m[2] * m[7] * m[9] * m[12] -
@@ -865,49 +796,9 @@ bool mat_is_invertible(int size, float *mat)
 {
     return !equal(mat_det(size, mat), 0);
 }
-void mat_inverse_4x4(float *m, float *out)
-{
-    float inv[16];
 
-    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-
-    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-
-    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-
-    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-
-    float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-
-    if (det == 0)
-        return;
-    det = 1.0f / det;
-
-    for (int i = 0; i < 16; i++)
-    {
-        out[i] = inv[i] * det;
-    }
-}
 void mat_inverse(int size, float *mat, float *out_mat)
 {
-    if (size == 4)
-    {
-        mat_inverse_4x4(mat, out_mat);
-        return;
-    }
-
     float det = mat_det(size, mat);
     if (det == 0)
         return;
@@ -1012,17 +903,18 @@ Tuple ray_position(Ray r, double time)
     Tuple distance_moved = tuple_scale(r.direction, time);
     return tuple_add(r.position, distance_moved);
 }
+
 Sphere sphere()
 {
-    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
+    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
     return s;
 }
 
 Intersections intersect(Sphere *s, Ray r1)
 {
-    // float m[16];
-    // mat_inverse(4, s->transform, m);
-    Ray ray = ray_transform(r1, s->inverse_transform);
+    float m[16];
+    mat_inverse(4, s->transform, m);
+    Ray ray = ray_transform(r1, m);
     Intersections ret;
     ret.count = 2;
     Tuple sphere_to_ray = tuple_sub(ray.position, s->position);
@@ -1030,7 +922,6 @@ Intersections intersect(Sphere *s, Ray r1)
     float a = tuple_dot(ray.direction, ray.direction);
     float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
     float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1;
-
     float discriminant = b * b - (4 * a * c);
 
     if (discriminant < 0)
@@ -1054,12 +945,12 @@ Intersection intersection(float time, void *object)
     Intersection ret = {.time = time, .object = object};
     return ret;
 }
+
 int comp(const void *a, const void *b)
 {
     return ((Intersection *)a)->time > ((Intersection *)b)->time;
 }
 
-// This function ensures that the intersections are sorted by their time variable.
 Intersections intersections(int count, ...)
 {
     Intersections ret;
@@ -1095,22 +986,20 @@ Ray ray_transform(Ray r, float *m)
     r.direction = mat_tuple_mult(m, r.direction);
     return r;
 }
+
 void set_transform(void *object, float *m)
 {
     memcpy((((Sphere *)object)->transform), m, sizeof(float) * 16);
-    float inverse[16];
-    mat_inverse(4, m, inverse);
-    memcpy((((Sphere *)object)->inverse_transform), inverse, sizeof(float) * 16);
 }
 
 Tuple sphere_normal_at(Sphere s, Tuple p)
 {
-    // float mat[16];
+    float mat[16];
     float mat2[16];
-    // mat_inverse(4, s.transform, mat);
-    Tuple object_point = mat_tuple_mult(s.inverse_transform, p);
+    mat_inverse(4, s.transform, mat);
+    Tuple object_point = mat_tuple_mult(mat, p);
     Tuple object_normal = tuple_sub(object_point, point(0, 0, 0));
-    mat_transpose(4, s.inverse_transform, mat2);
+    mat_transpose(4, mat, mat2);
     Tuple world_normal = mat_tuple_mult(mat2, object_normal);
     world_normal.w = 0;
     return tuple_normalize(world_normal);
@@ -1145,6 +1034,7 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
     float light_dot_normal = tuple_dot(light_vector, normal_vector);
     Tuple ambient = tuple_scale(effective_color, material.ambient);
     Tuple diffuse, specular;
+
     if (light_dot_normal < 0)
     {
         diffuse = color(0, 0, 0);
@@ -1153,7 +1043,6 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
     else
     {
         diffuse = tuple_scale(effective_color, material.diffuse * light_dot_normal);
-
         Tuple reflection_vector = reflect(tuple_negate(light_vector), normal_vector);
         float reflection_dot_eye = tuple_dot(reflection_vector, eye_vector);
         if (reflection_dot_eye <= 0)
@@ -1166,6 +1055,5 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
             specular = tuple_scale(light.intensity, material.specular * factor);
         }
     }
-
     return tuple_add(diffuse, tuple_add(specular, ambient));
 }
