@@ -11,7 +11,7 @@
 #define M_PI (3.14159265358979323846)
 #endif
 
-#define EPSILON (0.00001)
+#define EPSILON (0.0001)
 typedef struct tuple
 {
     float x, y, z, w;
@@ -29,12 +29,17 @@ typedef struct ray
     Tuple position;
     Tuple direction;
 } Ray;
-
+typedef struct material
+{
+    Tuple color;
+    float ambient, diffuse, specular, shininess;
+} Material;
 typedef struct sphere
 {
     Tuple position;
     float radius;
     float transform[4][4];
+    Material material;
 } Sphere;
 
 typedef struct intersection_tuple
@@ -56,10 +61,11 @@ typedef struct intersections
 
 typedef struct point_light
 {
-    Tuple color;
+    Tuple intensity;
     Tuple position;
 } PointLight;
 
+Material material(Tuple color, float ambient, float diffuse, float specular, float shininess);
 Tuple point(float x, float y, float z);
 Tuple vector(float x, float y, float z);
 bool equal(float x, float y);
@@ -99,13 +105,16 @@ Ray ray(Tuple origin, Tuple direction);
 Tuple ray_position(Ray r, double time);
 Ray ray_transform(Ray r, float m[4][4]);
 Sphere sphere();
-Intersections intersect(Sphere s, Ray r);
+Intersections intersect(Sphere *s, Ray r1);
 Intersection intersection(float time, void *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
 void set_transform(void *object, float m[4][4]);
 Tuple sphere_normal_at(Sphere s, Tuple p);
 Tuple reflect(Tuple incoming, Tuple normal);
+bool materials_equal(Material mat1, Material mat2);
+Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector);
+PointLight point_light(Tuple position, Tuple intensity);
 
 void test_linear_algebra()
 {
@@ -476,7 +485,7 @@ void test_linear_algebra()
     // Sphere Intersection Tests
     Ray ray1 = ray(point(0, 0, 0), vector(0, 0, 1));
     Sphere s = sphere();
-    Intersections xs = intersect(s, ray1);
+    Intersections xs = intersect(&s, ray1);
 
     assert(xs.count == 2);
     assert(xs.intersections[0].time == -1.0);
@@ -534,14 +543,14 @@ void test_linear_algebra()
     s = sphere();
     mat_scale(2, 2, 2, m);
     set_transform(&s, m);
-    xs = intersect(s, r);
+    xs = intersect(&s, r);
     assert(xs.count == 2);
     assert(xs.count == 2);
     assert(xs.intersections[0].time == 3);
     assert(xs.intersections[1].time == 7);
 
     // A program that casts rays at a sphere and draw the picture to a canvas.
-    const int SIZE = 100;
+    const int SIZE = 554;
     Canvas my_canvas = canvas(SIZE, SIZE);
 
     // We want to define a point, say (0, 0) that will be the origin of all of our rays.
@@ -562,12 +571,11 @@ void test_linear_algebra()
     {
         for (int y = 0; y < SIZE; y++)
         {
-            // float offset = (float)rand() / (float)RAND_MAX;
             pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
             camera_vector = tuple_sub(pixel_point, camera_origin);
             color_ray = ray(camera_origin, camera_vector);
 
-            Intersections sphere_intersects = intersect(cool_red_sphere, color_ray);
+            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
             if (sphere_intersects.count > 0)
                 my_canvas.canvas[x][y] = red;
             else
@@ -597,6 +605,65 @@ void test_linear_algebra()
     n = vector(sqrt(2) / 2, sqrt(2) / 2, 0);
     res = reflect(v, n);
     assert(tuple_equal(res, vector(1, 0, 0)));
+
+    // Scenario: A sphere has a default material
+    s = sphere();
+    Material material_1 = s.material;
+    assert(materials_equal(material_1, material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)));
+
+    // Scenario: Lighting with the eye between the light and the surface
+
+    Tuple eyev = vector(0, 0, -1);
+    Tuple normalv = vector(0, 0, -1);
+    PointLight light = point_light(point(0, 0, -10), color(1, 1, 1));
+
+    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
+
+    assert(tuple_equal(color(1.9, 1.9, 1.9), result));
+
+    // Scenario: Lighting with eye in the path of the reflection vector
+    eyev = vector(0, -sqrt(2) / 2, -sqrt(2) / 2);
+    normalv = vector(0, 0, -1);
+    light = point_light(point(0, 10, -10), color(1, 1, 1));
+    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
+    assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
+
+    // Put it together Chapter 6
+
+    camera_origin = point(0, 0, 0);
+    cool_red_sphere = sphere();
+    cool_red_sphere.material.color = color(0.85, 0.39, 0.18);
+    PointLight my_point_light = point_light(point(-10, 10, -10), color(1.0, 0.9, 0.95));
+    black = color(0, 0, 0);
+
+    mat_translate(0, 0, 2.0, sphere_mat);
+    set_transform(&cool_red_sphere, sphere_mat);
+
+    for (int x = 0; x < SIZE; x++)
+    {
+        for (int y = 0; y < SIZE; y++)
+        {
+            pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)((SIZE / 2) - y) / SIZE, 0.75);
+            camera_vector = tuple_normalize(tuple_sub(pixel_point, camera_origin));
+            color_ray = ray(camera_origin, camera_vector);
+
+            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
+            if (sphere_intersects.count > 0)
+            {
+                float hit_time = sphere_intersects.intersections[0].time;
+                Sphere *hit_object = (Sphere *)sphere_intersects.intersections[0].object;
+
+                Tuple hit_pos = ray_position(color_ray, hit_time);
+                Tuple s_normal = sphere_normal_at(*hit_object, hit_pos);
+                Tuple eye = tuple_negate(color_ray.direction);
+
+                my_canvas.canvas[x][y] = lighting(hit_object->material, my_point_light, hit_pos, eye, s_normal);
+            }
+            else
+                my_canvas.canvas[x][y] = black;
+        }
+    }
+    canvas_to_ppm(&my_canvas, "cooler_circle.ppm");
 }
 //
 // Create The Objects
@@ -773,7 +840,6 @@ bool mat_equal(int size, float mat_a[size][size], float mat_b[size][size])
         {
             if (!equal(mat_a[i][j], mat_b[i][j]))
             {
-                // printf("i: %d, j: %d, mat1 %f, mat2 %f\n", i, j, mat_a[i][j], mat_b[i][j]);
                 return false;
             }
         }
@@ -983,18 +1049,18 @@ Tuple ray_position(Ray r, double time)
 }
 Sphere sphere()
 {
-    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
+    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
     return s;
 }
 
-Intersections intersect(Sphere s, Ray r1)
+Intersections intersect(Sphere *s, Ray r1)
 {
     float m[4][4];
-    mat_inverse(4, s.transform, m);
+    mat_inverse(4, s->transform, m);
     Ray ray = ray_transform(r1, m);
     Intersections ret;
     ret.count = 2;
-    Tuple sphere_to_ray = tuple_sub(ray.position, s.position);
+    Tuple sphere_to_ray = tuple_sub(ray.position, s->position);
 
     float a = tuple_dot(ray.direction, ray.direction);
     float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
@@ -1010,8 +1076,8 @@ Intersections intersect(Sphere s, Ray r1)
 
     float t1 = (-1 * b - sqrt(discriminant)) / (2 * a);
     float t2 = (-1 * b + sqrt(discriminant)) / (2 * a);
-    Intersection inter1 = intersection(t1, &s);
-    Intersection inter2 = intersection(t2, &s);
+    Intersection inter1 = intersection(t1, s);
+    Intersection inter2 = intersection(t2, s);
 
     if (t1 > t2)
         return intersections(2, inter2, inter1);
@@ -1089,6 +1155,49 @@ Tuple reflect(Tuple incoming, Tuple normal)
 
 PointLight point_light(Tuple position, Tuple intensity)
 {
-    PointLight light = {.color = intensity, .position = position};
+    PointLight light = {.intensity = intensity, .position = position};
     return light;
+}
+
+Material material(Tuple color, float ambient, float diffuse, float specular, float shininess)
+{
+    Material m = {.color = color, .ambient = ambient, .diffuse = diffuse, .specular = specular, .shininess = shininess};
+    return m;
+}
+
+bool materials_equal(Material mat1, Material mat2)
+{
+    return equal(mat2.ambient, mat1.ambient) && tuple_equal(mat1.color, mat2.color) && equal(mat2.diffuse, mat1.diffuse) && equal(mat2.shininess, mat1.shininess) && equal(mat2.specular, mat1.specular);
+}
+
+Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector)
+{
+    Tuple effective_color = tuple_hadamard_product(material.color, light.intensity);
+    Tuple light_vector = tuple_normalize(tuple_sub(light.position, position));
+    float light_dot_normal = tuple_dot(light_vector, normal_vector);
+    Tuple ambient = tuple_scale(effective_color, material.ambient);
+    Tuple diffuse, specular;
+    if (light_dot_normal < 0)
+    {
+        diffuse = color(0, 0, 0);
+        specular = color(0, 0, 0);
+    }
+    else
+    {
+        diffuse = tuple_scale(effective_color, material.diffuse * light_dot_normal);
+
+        Tuple reflection_vector = reflect(tuple_negate(light_vector), normal_vector);
+        float reflection_dot_eye = tuple_dot(reflection_vector, eye_vector);
+        if (reflection_dot_eye <= 0)
+        {
+            specular = color(0, 0, 0);
+        }
+        else
+        {
+            float factor = pow(reflection_dot_eye, material.shininess);
+            specular = tuple_scale(light.intensity, material.specular * factor);
+        }
+    }
+
+    return tuple_add(diffuse, tuple_add(specular, ambient));
 }
