@@ -44,8 +44,8 @@ typedef struct sphere
 {
     Tuple position;
     float radius;
-    float transform[16];
-    float inverse_transform[16];
+    float transform[4 * 4];
+    float inverse_transform[4 * 4];
     Material material;
 } Sphere;
 
@@ -71,6 +71,14 @@ typedef struct point_light
     Tuple intensity;
     Tuple position;
 } PointLight;
+typedef struct world
+{
+    Sphere *spheres;
+    int num_spheres;
+
+    PointLight *lights;
+    int num_lights;
+} World;
 
 Material material(Tuple color, float ambient, float diffuse, float specular, float shininess);
 Tuple point(float x, float y, float z);
@@ -121,6 +129,9 @@ Tuple reflect(Tuple incoming, Tuple normal);
 bool materials_equal(Material mat1, Material mat2);
 Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector);
 PointLight point_light(Tuple position, Tuple intensity);
+void render_circle();
+void render_sphere();
+World world();
 
 void test_linear_algebra()
 {
@@ -240,9 +251,9 @@ void test_linear_algebra()
     }
     canvas_to_ppm(&physics_canvas, "physics.ppm");
     // Test Matrix
-    float my_matrix[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
-    float my_matrix2[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
-    float my_matrix3[16] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.54};
+    float my_matrix[4 * 4] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
+    float my_matrix2[4 * 4] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.5};
+    float my_matrix3[4 * 4] = {1, 2, 3, 4, 5.5, 6.5, 7.5, 8.5, 9, 10, 11, 12, 13.5, 14.5, 15.5, 16.54};
 
     assert(my_matrix[0] == 1);
     assert(my_matrix[3] == 4);
@@ -251,7 +262,7 @@ void test_linear_algebra()
     assert(mat_equal(4, my_matrix, my_matrix2));
     assert(!mat_equal(4, my_matrix, my_matrix3));
     // Test Matrix Mult
-    float mat_1[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2};
+    float mat_1[4 * 4] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2};
     float mat_2[16] = {-2, 1, 2, 3, 3, 2, 1, -1, 4, 3, 6, 5, 1, 2, 7, 8};
 
     float res_matrix[16];
@@ -463,46 +474,15 @@ void test_linear_algebra()
     assert(xs.intersections[1].time == 7);
 
     // A program that casts rays at a sphere and draw the picture to a canvas.
-    const int SIZE = 554;
-    Canvas my_canvas = canvas(SIZE, SIZE);
 
-    // We want to define a point, say (0, 0) that will be the origin of all of our rays.
-    // Then we will have a screen be say 1 unit in front of our point.
-    // The circle will then be one unit in front of the screen
-    // We will check if the vector from our point (0,0) to the given pixel on the screen intersects with the sphere.
-    Tuple camera_origin = point(0, 0, 0);
-    Tuple pixel_point, camera_vector;
-    Ray color_ray;
-    Sphere cool_red_sphere = sphere();
-    Tuple black = color(0, 0, 0);
-    float sphere_mat[16];
+    // render_circle();
 
-    mat_translate(0, 0, 2.0, sphere_mat);
-    set_transform(&cool_red_sphere, sphere_mat);
-
-    // for (int x = 0; x < SIZE; x++)
-    // {
-    //     for (int y = 0; y < SIZE; y++)
-    //     {
-    //         pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
-    //         camera_vector = tuple_sub(pixel_point, camera_origin);
-    //         color_ray = ray(camera_origin, camera_vector);
-
-    //         Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
-    //         if (sphere_intersects.count > 0)
-    //             my_canvas.canvas[x][y] = red;
-    //         else
-    //             my_canvas.canvas[x][y] = black;
-    //     }
-    // }
-    // canvas_to_ppm(&my_canvas, "cool_circle.ppm");
-
-    // Scenario: The normal on a sphere at a nonaxial point
     s = sphere();
     Tuple normal = sphere_normal_at(s, point(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3));
     assert(tuple_equal(normal, vector(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3)));
     // Scenario: Computing the normal on a translated sphere
     s = sphere();
+    float sphere_mat[16];
     mat_translate(0, 1, 0, sphere_mat);
     set_transform(&s, sphere_mat);
     normal = sphere_normal_at(s, point(0, 1.70711, -0.70711));
@@ -542,13 +522,57 @@ void test_linear_algebra()
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
 
     // Put it together Chapter 6
+    render_sphere();
+}
+//
 
+void render_circle()
+{
+    const int SIZE = 554;
+    Canvas my_canvas = canvas(SIZE, SIZE);
+    Tuple red = color(.95, 0.2, 0.2);
+    Tuple camera_origin = point(0, 0, 0);
+    Tuple pixel_point, camera_vector;
+    Ray color_ray;
+    Sphere cool_red_sphere = sphere();
+    Tuple black = color(0, 0, 0);
+    float sphere_mat[16];
+
+    mat_translate(0, 0, 2.0, sphere_mat);
+    set_transform(&cool_red_sphere, sphere_mat);
+
+    for (int x = 0; x < SIZE; x++)
+    {
+        for (int y = 0; y < SIZE; y++)
+        {
+            pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
+            camera_vector = tuple_sub(pixel_point, camera_origin);
+            color_ray = ray(camera_origin, camera_vector);
+
+            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
+            if (sphere_intersects.count > 0)
+                my_canvas.canvas[x][y] = red;
+            else
+                my_canvas.canvas[x][y] = black;
+        }
+    }
+    canvas_to_ppm(&my_canvas, "cool_circle.ppm");
+}
+void render_sphere()
+{
+    const int SIZE = 554;
+    Canvas my_canvas = canvas(SIZE, SIZE);
+    Tuple camera_origin = point(0, 0, 0);
+    Tuple pixel_point, camera_vector;
+    Ray color_ray;
+    Sphere cool_red_sphere = sphere();
+    Tuple black = color(0, 0, 0);
     camera_origin = point(0, 0, 0);
     cool_red_sphere = sphere();
     cool_red_sphere.material.color = color(0.85, 0.39, 0.18);
     PointLight my_point_light = point_light(point(-10, 10, -10), color(1.0, 0.9, 0.95));
     black = color(0, 0, 0);
-
+    float sphere_mat[16];
     mat_translate(0, 0, 2.0, sphere_mat);
     set_transform(&cool_red_sphere, sphere_mat);
 
@@ -578,7 +602,6 @@ void test_linear_algebra()
     }
     canvas_to_ppm(&my_canvas, "cooler_circle.ppm");
 }
-//
 // Create The Objects
 
 Tuple tuple(float x, float y, float z, float w)
@@ -1020,8 +1043,7 @@ Sphere sphere()
 
 Intersections intersect(Sphere *s, Ray r1)
 {
-    // float m[16];
-    // mat_inverse(4, s->transform, m);
+
     Ray ray = ray_transform(r1, s->inverse_transform);
     Intersections ret;
     ret.count = 2;
@@ -1105,9 +1127,7 @@ void set_transform(void *object, float *m)
 
 Tuple sphere_normal_at(Sphere s, Tuple p)
 {
-    // float mat[16];
     float mat2[16];
-    // mat_inverse(4, s.transform, mat);
     Tuple object_point = mat_tuple_mult(s.inverse_transform, p);
     Tuple object_normal = tuple_sub(object_point, point(0, 0, 0));
     mat_transpose(4, s.inverse_transform, mat2);
@@ -1168,4 +1188,28 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
     }
 
     return tuple_add(diffuse, tuple_add(specular, ambient));
+}
+
+World world()
+{
+    World wor = {.lights = malloc(sizeof(PointLight) * 10), .spheres = malloc(sizeof(Sphere) * 10), .num_lights = 0, .num_spheres = 0};
+    return wor;
+}
+
+World default_world()
+{
+    World wor = {.lights = malloc(sizeof(PointLight) * 10), .spheres = malloc(sizeof(Sphere) * 10), .num_lights = 0, .num_spheres = 0};
+    Sphere s1 = sphere();
+    s1.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 0.2);
+    float s2_mat[4 * 4];
+    mat_scale(0.5, 0.5, 0.5, s2_mat);
+    Sphere s2 = sphere();
+    set_transform(&s2, s2_mat);
+
+    wor.spheres[0] = s1;
+    wor.spheres[1] = s2;
+    wor.num_spheres = 2;
+
+    wor.lights[0] = point_light(point(-10, 10, -10), color(1, 1, 1));
+    return wor;
 }
