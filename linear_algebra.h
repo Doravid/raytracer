@@ -130,8 +130,10 @@ bool materials_equal(Material mat1, Material mat2);
 Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector);
 PointLight point_light(Tuple position, Tuple intensity);
 void render_circle();
-void render_sphere();
+void render_sphere(float hight, char *file_name);
 World world();
+World default_world();
+Intersections intersect_world(World world, Ray ray);
 
 void test_linear_algebra()
 {
@@ -520,11 +522,25 @@ void test_linear_algebra()
     light = point_light(point(0, 10, -10), color(1, 1, 1));
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
-
+    char filepath[64];
     // Put it together Chapter 6
-    render_sphere();
+    for (int frame = 0; frame < 60; frame++)
+    {
+        snprintf(filepath, sizeof(filepath) - 1, "cool_sphere-%03d.ppm", frame);
+        render_sphere((float)(frame - 30) / 20, filepath);
+    }
+
+    // Scenario: Intersect a world with a ray
+    World world = default_world();
+    r = ray(point(0, 0, -5), vector(0, 0, 1));
+
+    xs = intersect_world(world, r);
+    assert(xs.count == 4);
+    assert(xs.intersections[0].time == 4);
+    assert(xs.intersections[1].time == 4.5);
+    assert(xs.intersections[2].time == 5.5);
+    assert(xs.intersections[3].time == 6);
 }
-//
 
 void render_circle()
 {
@@ -558,7 +574,7 @@ void render_circle()
     }
     canvas_to_ppm(&my_canvas, "cool_circle.ppm");
 }
-void render_sphere()
+void render_sphere(float hight, char *file_name)
 {
     const int SIZE = 554;
     Canvas my_canvas = canvas(SIZE, SIZE);
@@ -567,7 +583,7 @@ void render_sphere()
     Ray color_ray;
     Sphere cool_red_sphere = sphere();
     Tuple black = color(0, 0, 0);
-    camera_origin = point(0, 0, 0);
+    camera_origin = point(0, hight, 0);
     cool_red_sphere = sphere();
     cool_red_sphere.material.color = color(0.85, 0.39, 0.18);
     PointLight my_point_light = point_light(point(-10, 10, -10), color(1.0, 0.9, 0.95));
@@ -600,7 +616,7 @@ void render_sphere()
                 my_canvas.canvas[x][y] = black;
         }
     }
-    canvas_to_ppm(&my_canvas, "cooler_circle.ppm");
+    canvas_to_ppm(&my_canvas, file_name);
 }
 // Create The Objects
 
@@ -1078,7 +1094,9 @@ Intersection intersection(float time, void *object)
 }
 int comp(const void *a, const void *b)
 {
-    return ((Intersection *)a)->time > ((Intersection *)b)->time;
+    float time_a = ((Intersection *)a)->time;
+    float time_b = ((Intersection *)b)->time;
+    return (time_a > time_b) - (time_a < time_b);
 }
 
 // This function ensures that the intersections are sorted by their time variable.
@@ -1212,4 +1230,40 @@ World default_world()
 
     wor.lights[0] = point_light(point(-10, 10, -10), color(1, 1, 1));
     return wor;
+}
+
+Intersections intersect_world(World world, Ray r)
+{
+
+    Intersections ret;
+    ret.intersections = malloc(sizeof(Intersection) * world.num_spheres * 2);
+    ret.count = 0;
+    int offset_counter = 0;
+    for (int i = 0; i < world.num_spheres; i++)
+    {
+        Ray ray = ray_transform(r, world.spheres[i].inverse_transform);
+        Tuple sphere_to_ray = tuple_sub(ray.position, world.spheres[i].position);
+        float a = tuple_dot(ray.direction, ray.direction);
+        float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
+        float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1;
+
+        float discriminant = b * b - (4 * a * c);
+
+        if (discriminant < 0)
+        {
+            offset_counter++;
+            continue;
+        }
+        ret.count += 2;
+
+        float t1 = (-1 * b - sqrt(discriminant)) / (2 * a);
+        float t2 = (-1 * b + sqrt(discriminant)) / (2 * a);
+        Intersection inter1 = intersection(t1, &world.spheres[i]);
+        Intersection inter2 = intersection(t2, &world.spheres[i]);
+
+        ret.intersections[(i - offset_counter) * 2] = inter1;
+        ret.intersections[(i - offset_counter) * 2 + 1] = inter2;
+    }
+    qsort(ret.intersections, ret.count, sizeof(Intersection), comp);
+    return ret;
 }

@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -Wextra -o2
+CFLAGS = -Wall -Wextra -O3 -ffast-math
 TARGET = raytracer
 SRCS = main.c
 DEPS = linear_algebra.h Makefile
@@ -10,4 +10,4 @@ $(TARGET): $(SRCS) $(DEPS)
 	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) -lm
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) *.ppm
