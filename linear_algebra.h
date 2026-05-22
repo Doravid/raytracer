@@ -79,8 +79,15 @@ typedef struct world
     PointLight *lights;
     int num_lights;
 } World;
+typedef struct computation
+{
+    void *object;
+    float time;
+    Tuple point, eyev, normalv;
+} Computation;
 
-Material material(Tuple color, float ambient, float diffuse, float specular, float shininess);
+Material
+material(Tuple color, float ambient, float diffuse, float specular, float shininess);
 Tuple point(float x, float y, float z);
 Tuple vector(float x, float y, float z);
 bool equal(float x, float y);
@@ -134,7 +141,7 @@ void render_sphere(float hight, char *file_name);
 World world();
 World default_world();
 Intersections intersect_world(World world, Ray ray);
-
+Computation prepare_computations(Intersection inter, Ray r1);
 void test_linear_algebra()
 {
     // Test Equality
@@ -524,10 +531,10 @@ void test_linear_algebra()
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
     char filepath[64];
     // Put it together Chapter 6
-    for (int frame = 0; frame < 60; frame++)
+    for (int frame = 0; frame < 1; frame++)
     {
         snprintf(filepath, sizeof(filepath) - 1, "cool_sphere-%03d.ppm", frame);
-        render_sphere((float)(frame - 30) / 20, filepath);
+        render_sphere((float)(frame) / 20, filepath);
     }
 
     // Scenario: Intersect a world with a ray
@@ -540,11 +547,22 @@ void test_linear_algebra()
     assert(xs.intersections[1].time == 4.5);
     assert(xs.intersections[2].time == 5.5);
     assert(xs.intersections[3].time == 6);
+
+    // Scenario: Precomputing the state of an intersection
+    r = ray(point(0, 0, -5), vector(0, 0, 1));
+    Sphere shape = sphere();
+    Intersection i = intersection(4, &shape);
+    Computation comps = prepare_computations(i, r);
+    assert(comps.time == i.time);
+    assert(comps.object == i.object);
+    assert(tuple_equal(comps.point, point(0, 0, -1)));
+    assert(tuple_equal(comps.eyev, vector(0, 0, -1)));
+    assert(tuple_equal(comps.normalv, vector(0, 0, -1)));
 }
 
 void render_circle()
 {
-    const int SIZE = 554;
+    const int SIZE = 480;
     Canvas my_canvas = canvas(SIZE, SIZE);
     Tuple red = color(.95, 0.2, 0.2);
     Tuple camera_origin = point(0, 0, 0);
@@ -576,7 +594,7 @@ void render_circle()
 }
 void render_sphere(float hight, char *file_name)
 {
-    const int SIZE = 554;
+    const int SIZE = 240;
     Canvas my_canvas = canvas(SIZE, SIZE);
     Tuple camera_origin = point(0, 0, 0);
     Tuple pixel_point, camera_vector;
@@ -1266,4 +1284,20 @@ Intersections intersect_world(World world, Ray r)
     }
     qsort(ret.intersections, ret.count, sizeof(Intersection), comp);
     return ret;
+}
+
+Computation prepare_computations(Intersection inter, Ray r1)
+{
+    // Tuple p =;
+    // instantiate a data structure for storing some precomputed values
+    Computation comps;
+
+    // copy the intersection's properties, for convenience
+    comps.time = inter.time;
+    comps.object = inter.object;
+    // # precompute some useful values
+    comps.point = ray_position(r1, comps.time);
+    comps.eyev = tuple_negate(r1.direction);
+    comps.normalv = sphere_normal_at(*(Sphere *)comps.object, comps.point);
+    return comps;
 }
