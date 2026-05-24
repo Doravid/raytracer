@@ -144,6 +144,7 @@ Intersections intersect_world(World world, Ray ray);
 Computation prepare_computations(Intersection inter, Ray r1);
 Tuple shade_hit(World w, Computation comps);
 Tuple color_at(World w, Ray r);
+void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4]);
 
 void test_linear_algebra()
 {
@@ -607,6 +608,24 @@ void test_linear_algebra()
     r = ray(point(0, 0, 0.75), vector(0, 0, -1));
     c = color_at(w, r);
     assert(tuple_equal(c, inner->material.color));
+
+    //  Scenario: The transformation matrix for the default orientation
+    Tuple from = point(0, 0, 0);
+    Tuple to = point(0, 0, -1);
+    Tuple up = vector(0, 1, 0);
+
+    view_transform(from, to, up, mat_1);
+    assert(mat_equal(4, mat_1, identity_matrix));
+
+    // Scenario: A view transformation matrix looking in positive z direction
+    from = point(0, 0, 0);
+    to = point(0, 0, 1);
+    up = vector(0, 1, 0);
+    view_transform(from, to, up, mat_1);
+
+    mat_scale(-1, 1, -1, res_matrix);
+
+    assert(mat_equal(4, res_matrix, mat_1));
 }
 
 void render_circle()
@@ -857,6 +876,7 @@ bool mat_equal(int size, float *mat_a, float *mat_b)
     {
         if (!equal(mat_a[i], mat_b[i]))
         {
+            printf("index: %d, mat_a value: %f, mat_b value: %f\n", i, mat_a[i], mat_b[i]);
             return false;
         }
     }
@@ -1366,4 +1386,31 @@ Tuple color_at(World w, Ray r)
 
     Computation mafs = prepare_computations(h, r);
     return shade_hit(w, mafs);
+}
+
+void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4])
+{
+
+    Tuple forward_vec = tuple_normalize(tuple_sub(to, from));
+    Tuple left = tuple_cross(forward_vec, tuple_normalize(up));
+    Tuple true_up = tuple_cross(left, forward_vec);
+
+    float orientation[16];
+    memset(orientation, 0, sizeof(float) * 16);
+
+    orientation[0] = left.x;
+    orientation[1] = left.y;
+    orientation[2] = left.z;
+    orientation[4] = true_up.x;
+    orientation[5] = true_up.y;
+    orientation[6] = true_up.z;
+    orientation[8] = -forward_vec.x;
+    orientation[9] = -forward_vec.y;
+    orientation[10] = -forward_vec.z;
+    orientation[15] = 1;
+
+    float translate[16];
+    mat_translate(-from.x, -from.y, -from.z, translate);
+
+    mat_mult(4, orientation, translate, output_matrix);
 }
