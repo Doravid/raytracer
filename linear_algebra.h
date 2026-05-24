@@ -76,14 +76,14 @@ typedef struct world
     Sphere *spheres;
     int num_spheres;
 
-    PointLight *lights;
-    int num_lights;
+    PointLight light;
 } World;
 typedef struct computation
 {
     void *object;
     float time;
     Tuple point, eyev, normalv;
+    bool inside;
 } Computation;
 
 Material
@@ -142,6 +142,9 @@ World world();
 World default_world();
 Intersections intersect_world(World world, Ray ray);
 Computation prepare_computations(Intersection inter, Ray r1);
+Tuple shade_hit(World w, Computation comps);
+Tuple color_at(World w, Ray r);
+
 void test_linear_algebra()
 {
     // Test Equality
@@ -558,6 +561,52 @@ void test_linear_algebra()
     assert(tuple_equal(comps.point, point(0, 0, -1)));
     assert(tuple_equal(comps.eyev, vector(0, 0, -1)));
     assert(tuple_equal(comps.normalv, vector(0, 0, -1)));
+
+    // Scenario: The hit, when an intersection occurs on the outside
+    r = ray(point(0, 0, -5), vector(0, 0, 1));
+    shape = sphere();
+    i = intersection(4, &shape);
+    comps = prepare_computations(i, r);
+    assert(comps.inside == false);
+
+    // Scenario: The hit, when an intersection occurs on the inside
+    r = ray(point(0, 0, 0), vector(0, 0, 1));
+    shape = sphere();
+    i = intersection(1, &shape);
+    comps = prepare_computations(i, r);
+    assert(tuple_equal(comps.point, point(0, 0, 1)));
+    assert(tuple_equal(comps.eyev, vector(0, 0, -1)));
+    assert(tuple_equal(comps.normalv, vector(0, 0, -1)));
+    assert(comps.inside == true);
+
+    // Scenario: Shading an intersection
+    World w = default_world();
+    r = ray(point(0, 0, -5), vector(0, 0, 1));
+    shape = w.spheres[0];
+    i = intersection(4, &shape);
+    comps = prepare_computations(i, r);
+    c = shade_hit(w, comps);
+    assert(tuple_equal(c, color(0.38066, 0.47583, 0.2855)));
+
+    // Scenario: Shading an intersection from the inside
+    w = default_world();
+    w.light = point_light(point(0, 0.25, 0), color(1, 1, 1));
+    r = ray(point(0, 0, 0), vector(0, 0, 1));
+    shape = w.spheres[1];
+    i = intersection(0.5, &shape);
+    comps = prepare_computations(i, r);
+    c = shade_hit(w, comps);
+    assert(tuple_equal(c, color(0.90498, 0.90498, 0.90498)));
+
+    // Scenario: The color with an intersection behind the ray
+    w = default_world();
+    Sphere *outer = &w.spheres[0];
+    outer->material.ambient = 1;
+    Sphere *inner = &w.spheres[1];
+    inner->material.ambient = 1;
+    r = ray(point(0, 0, 0.75), vector(0, 0, -1));
+    c = color_at(w, r);
+    assert(tuple_equal(c, inner->material.color));
 }
 
 void render_circle()
@@ -1228,15 +1277,15 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
 
 World world()
 {
-    World wor = {.lights = malloc(sizeof(PointLight) * 10), .spheres = malloc(sizeof(Sphere) * 10), .num_lights = 0, .num_spheres = 0};
+    World wor = {.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
     return wor;
 }
 
 World default_world()
 {
-    World wor = {.lights = malloc(sizeof(PointLight) * 10), .spheres = malloc(sizeof(Sphere) * 10), .num_lights = 0, .num_spheres = 0};
+    World wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
     Sphere s1 = sphere();
-    s1.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 0.2);
+    s1.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 200.0);
     float s2_mat[4 * 4];
     mat_scale(0.5, 0.5, 0.5, s2_mat);
     Sphere s2 = sphere();
@@ -1246,7 +1295,6 @@ World default_world()
     wor.spheres[1] = s2;
     wor.num_spheres = 2;
 
-    wor.lights[0] = point_light(point(-10, 10, -10), color(1, 1, 1));
     return wor;
 }
 
@@ -1288,16 +1336,34 @@ Intersections intersect_world(World world, Ray r)
 
 Computation prepare_computations(Intersection inter, Ray r1)
 {
-    // Tuple p =;
-    // instantiate a data structure for storing some precomputed values
+    // Instantiate a data structure for storing some precomputed values
     Computation comps;
 
-    // copy the intersection's properties, for convenience
+    // Copy the intersection's properties, for convenience
     comps.time = inter.time;
     comps.object = inter.object;
-    // # precompute some useful values
+    // Pre-compute some useful values
     comps.point = ray_position(r1, comps.time);
     comps.eyev = tuple_negate(r1.direction);
     comps.normalv = sphere_normal_at(*(Sphere *)comps.object, comps.point);
+    comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0);
+    if (comps.inside)
+        comps.normalv = tuple_negate(comps.normalv);
     return comps;
+}
+
+Tuple shade_hit(World w, Computation comps)
+{
+    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv);
+}
+
+Tuple color_at(World w, Ray r)
+{
+    Intersections inters = intersect_world(w, r);
+    Intersection h = hit(inters);
+    if (inters.count == 0)
+        return color(0, 0, 0);
+
+    Computation mafs = prepare_computations(h, r);
+    return shade_hit(w, mafs);
 }
