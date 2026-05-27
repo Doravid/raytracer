@@ -22,7 +22,6 @@ typedef struct tuple
 {
     float x, y, z, w;
 } Tuple;
-
 typedef struct canvas
 {
     Tuple **canvas;
@@ -144,6 +143,7 @@ Tuple lighting(Material material, PointLight light, Tuple position, Tuple eye_ve
 PointLight point_light(Tuple position, Tuple intensity);
 void render_circle();
 void render_sphere(float hight, char *file_name);
+void render_scene();
 World world();
 World default_world();
 Intersections intersect_world(World world, Ray ray);
@@ -533,7 +533,6 @@ void test_linear_algebra()
     PointLight light = point_light(point(0, 0, -10), color(1, 1, 1));
 
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
-
     assert(tuple_equal(color(1.9, 1.9, 1.9), result));
 
     // Scenario: Lighting with eye in the path of the reflection vector
@@ -542,13 +541,13 @@ void test_linear_algebra()
     light = point_light(point(0, 10, -10), color(1, 1, 1));
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
-    char filepath[64];
-    // Put it together Chapter 6
-    for (int frame = 0; frame < 1; frame++)
-    {
-        snprintf(filepath, sizeof(filepath) - 1, "cool_sphere-%03d.ppm", frame);
-        render_sphere((float)(frame) / 20, filepath);
-    }
+    // char filepath[64];
+    // // Put it together Chapter 6
+    // for (int frame = 0; frame < 1; frame++)
+    // {
+    //     snprintf(filepath, sizeof(filepath) - 1, "cool_sphere-%03d.ppm", frame);
+    //     render_sphere((float)(frame) / 20, filepath);
+    // }
 
     // Scenario: Intersect a world with a ray
     World world = default_world();
@@ -698,6 +697,8 @@ void test_linear_algebra()
 
     image = render(cam, w);
     canvas_to_ppm(&image, "2_thing.ppm");
+
+    render_scene();
 }
 
 void render_circle()
@@ -1537,4 +1538,69 @@ Canvas render(Camera c, World w)
     }
 
     return image;
+}
+
+void render_scene()
+{
+    World w = world();
+    w.num_spheres = 6;
+
+    float temp1[16], temp2[16];
+    float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
+
+    w.spheres[0] = sphere();
+    mat_scale(10, 0.01, 10, scale);
+    set_transform(&w.spheres[0], scale);
+    w.spheres[0].material.color = color(1, 0.9, 0.9);
+    w.spheres[0].material.specular = 0;
+
+    w.spheres[1] = sphere();
+    mat_rotate_x(M_PI / 2, rotate_x);
+    mat_rotate_y(-M_PI / 4, rotate_y);
+    mat_translate(0, 0, 5, translate);
+    mat_mult(4, rotate_x, scale, temp1);
+    mat_mult(4, rotate_y, temp1, temp2);
+    mat_mult(4, translate, temp2, final_transform);
+    set_transform(&w.spheres[1], final_transform);
+    w.spheres[1].material = w.spheres[0].material;
+
+    w.spheres[2] = sphere();
+    mat_rotate_y(M_PI / 4, rotate_y);
+    mat_mult(4, rotate_y, temp1, temp2);
+    mat_mult(4, translate, temp2, final_transform);
+    set_transform(&w.spheres[2], final_transform);
+    w.spheres[2].material = w.spheres[0].material;
+
+    w.spheres[3] = sphere();
+    mat_translate(-0.5, 1.0, 0.5, translate);
+    set_transform(&w.spheres[3], translate);
+    w.spheres[3].material.color = color(0.1, 1.0, 0.5);
+    w.spheres[3].material.diffuse = 0.7f;
+    w.spheres[3].material.specular = 0.3f;
+
+    w.spheres[4] = sphere();
+    mat_scale(0.5, 0.5, 0.5, scale);
+    mat_translate(1.5, 0.5, -0.5, translate);
+    mat_mult(4, translate, scale, final_transform);
+    set_transform(&w.spheres[4], final_transform);
+    w.spheres[4].material.color = color(0.5, 1.0, 0.1);
+    w.spheres[4].material.diffuse = 0.7f;
+    w.spheres[4].material.specular = 0.3f;
+
+    w.spheres[5] = sphere();
+    mat_scale(0.33, 0.33, 0.33, scale);
+    mat_translate(-1.5, 0.33, -0.75, translate);
+    mat_mult(4, translate, scale, final_transform);
+    set_transform(&w.spheres[5], final_transform);
+    w.spheres[5].material.color = color(1.0, 0.8, 0.1);
+    w.spheres[5].material.diffuse = 0.7f;
+    w.spheres[5].material.specular = 0.3f;
+
+    w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
+
+    Camera c = camera(2560, 1440, M_PI / 3);
+    view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), c.transform);
+
+    Canvas image = render(c, w);
+    canvas_to_ppm(&image, "test.ppm");
 }
