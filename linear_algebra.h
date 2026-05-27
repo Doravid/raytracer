@@ -85,6 +85,12 @@ typedef struct computation
     Tuple point, eyev, normalv;
     bool inside;
 } Computation;
+typedef struct camera
+{
+    int hsize, vsize;
+    float field_of_view, pixel_size, half_width, half_height;
+    float transform[16];
+} Camera;
 
 Material
 material(Tuple color, float ambient, float diffuse, float specular, float shininess);
@@ -145,6 +151,9 @@ Computation prepare_computations(Intersection inter, Ray r1);
 Tuple shade_hit(World w, Computation comps);
 Tuple color_at(World w, Ray r);
 void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4]);
+Camera camera(int hsize, int vsize, float field_of_view);
+Ray ray_for_pixel(Camera c, int x, int y);
+Canvas render(Camera c, World w);
 
 void test_linear_algebra()
 {
@@ -626,6 +635,69 @@ void test_linear_algebra()
     mat_scale(-1, 1, -1, res_matrix);
 
     assert(mat_equal(4, res_matrix, mat_1));
+
+    // Scenario: An arbitrary view transformation
+    from = point(1, 3, 2);
+    to = point(4, -2, 8);
+    up = vector(1, 1, 0);
+    view_transform(from, to, up, mat_1);
+
+    float mat_ref[16] = {-0.50709, 0.50709, 0.67612, -2.36643, 0.76772, 0.60609, 0.12122, -2.82843, -0.35857, 0.59761, -0.71714, 0.00000, 0.00000, 0.00000, 0.00000, 1.00000};
+    assert(mat_equal(4, mat_1, mat_ref));
+
+    // Scenario: Constructing a camera
+    int hsize = 160, vsize = 120;
+    float field_of_view = M_PI / 2;
+    Camera cam = camera(hsize, vsize, field_of_view);
+    assert(cam.hsize == 160);
+    assert(cam.vsize == 120);
+    assert(equal(cam.field_of_view, M_PI / 2));
+    assert(mat_equal(4, cam.transform, identity_matrix));
+
+    // Scenario: The pixel size for a horizontal canvas
+    cam = camera(200, 125, M_PI / 2.0);
+    assert(equal(cam.pixel_size, 0.01));
+
+    // Scenario: The pixel size for a vertical canvas
+    cam = camera(125, 200, M_PI / 2.0);
+    assert(equal(cam.pixel_size, 0.01));
+
+    // Scenario: Constructing a ray through a corner of the canvas
+    cam = camera(201, 101, M_PI / 2);
+    r = ray_for_pixel(cam, 0, 0);
+    assert(tuple_equal(r.position, point(0, 0, 0)));
+    assert(tuple_equal(r.direction, vector(0.66519, 0.33259, -0.66851)));
+
+    // Scenario: Constructing a ray when the camera is transformed
+    cam = camera(201, 101, M_PI / 2);
+    mat_rotate_y(M_PI / 4, mat_1);
+    mat_translate(0, -2, 5, trans_mat);
+    mat_mult(4, mat_1, trans_mat, cam.transform);
+    r = ray_for_pixel(cam, 100, 50);
+    assert(tuple_equal(r.position, point(0, 2, -5)));
+    assert(tuple_equal(r.direction, vector(sqrt(2) / 2, 0, -sqrt(2) / 2)));
+
+    // Scenario: Rendering a world with a camera
+    w = default_world();
+    cam = camera(11, 11, M_PI / 2);
+    from = point(0, 0, -5);
+    to = point(0, 0, 0);
+    up = vector(0, 1, 0);
+    view_transform(from, to, up, cam.transform);
+
+    Canvas image = render(cam, w);
+    assert(tuple_equal(image.canvas[5][5], color(0.38066, 0.47583, 0.2855)));
+
+    w = default_world();
+    w.spheres[1].material.color = color(0.8, 0.3, 0.8);
+    cam = camera(410, 410, M_PI / 2);
+    from = point(0, 0, -0.8);
+    to = point(0, 0, 0);
+    up = vector(0, 1, 0);
+    view_transform(from, to, up, cam.transform);
+
+    image = render(cam, w);
+    canvas_to_ppm(&image, "2_thing.ppm");
 }
 
 void render_circle()
@@ -876,7 +948,6 @@ bool mat_equal(int size, float *mat_a, float *mat_b)
     {
         if (!equal(mat_a[i], mat_b[i]))
         {
-            printf("index: %d, mat_a value: %f, mat_b value: %f\n", i, mat_a[i], mat_b[i]);
             return false;
         }
     }
@@ -1413,4 +1484,57 @@ void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4])
     mat_translate(-from.x, -from.y, -from.z, translate);
 
     mat_mult(4, orientation, translate, output_matrix);
+}
+Camera camera(int hsize, int vsize, float field_of_view)
+{
+    Camera c = {.hsize = hsize, .vsize = vsize, .field_of_view = field_of_view};
+    mat_identity(c.transform);
+    float half_view = tan(c.field_of_view / 2.0);
+    float aspect = (float)c.hsize / (float)c.vsize;
+    if (aspect >= 1)
+    {
+        c.half_width = half_view;
+        c.half_height = half_view / aspect;
+    }
+    else
+    {
+        c.half_width = half_view * aspect;
+        c.half_height = half_view;
+    }
+    c.pixel_size = (c.half_width * 2) / c.hsize;
+    return c;
+}
+
+Ray ray_for_pixel(Camera c, int x, int y)
+{
+    float xoffset, yoffset;
+
+    xoffset = (x + 0.5) * c.pixel_size;
+    yoffset = (y + 0.5) * c.pixel_size;
+
+    float world_x = c.half_width - xoffset;
+    float world_y = c.half_height - yoffset;
+    float inverse[16];
+    mat_inverse_4x4(c.transform, inverse);
+    Tuple pixel = mat_tuple_mult(inverse, point(world_x, world_y, -1));
+    Tuple origin = mat_tuple_mult(inverse, point(0, 0, 0));
+    Tuple direction = tuple_normalize(tuple_sub(pixel, origin));
+
+    return ray(origin, direction);
+}
+
+Canvas render(Camera c, World w)
+{
+    Canvas image = canvas(c.hsize, c.vsize);
+    for (int y = 0; y < c.vsize; y++)
+    {
+        for (int x = 0; x < c.hsize; x++)
+        {
+            Ray ray = ray_for_pixel(c, x, y);
+            Tuple color = color_at(w, ray);
+            write_pixel(&image, x, y, color);
+        }
+    }
+
+    return image;
 }
