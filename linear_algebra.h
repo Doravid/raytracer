@@ -1,3 +1,5 @@
+#pragma once
+
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -6,6 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdalign.h>
+#include <stdint.h>
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
@@ -88,6 +91,7 @@ typedef struct camera
 {
     int hsize, vsize;
     float field_of_view, pixel_size, half_width, half_height;
+    float inverse_transform[16];
     float transform[16];
 } Camera;
 
@@ -136,6 +140,7 @@ Intersection intersection(float time, void *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
 void set_transform(void *object, float *m);
+void set_camera_transform(void *object, float *m);
 Tuple sphere_normal_at(Sphere s, Tuple p);
 Tuple reflect(Tuple incoming, Tuple normal);
 bool materials_equal(Material mat1, Material mat2);
@@ -144,16 +149,16 @@ PointLight point_light(Tuple position, Tuple intensity);
 void render_circle();
 void render_sphere(float hight, char *file_name);
 void render_scene();
+Canvas render(Camera c, World w);
 World world();
 World default_world();
-Intersections intersect_world(World world, Ray ray);
+void intersect_world(World world, Ray r, Intersections *out);
 Computation prepare_computations(Intersection inter, Ray r1);
 Tuple shade_hit(World w, Computation comps);
 Tuple color_at(World w, Ray r);
 void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4]);
 Camera camera(int hsize, int vsize, float field_of_view);
 Ray ray_for_pixel(Camera c, int x, int y);
-Canvas render(Camera c, World w);
 
 void test_linear_algebra()
 {
@@ -541,19 +546,15 @@ void test_linear_algebra()
     light = point_light(point(0, 10, -10), color(1, 1, 1));
     result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
-    // char filepath[64];
-    // // Put it together Chapter 6
-    // for (int frame = 0; frame < 1; frame++)
-    // {
-    //     snprintf(filepath, sizeof(filepath) - 1, "cool_sphere-%03d.ppm", frame);
-    //     render_sphere((float)(frame) / 20, filepath);
-    // }
 
     // Scenario: Intersect a world with a ray
     World world = default_world();
     r = ray(point(0, 0, -5), vector(0, 0, 1));
 
-    xs = intersect_world(world, r);
+    Intersection buffer[world.num_spheres * 2];
+    inters.intersections = buffer;
+
+    intersect_world(world, r, &xs);
     assert(xs.count == 4);
     assert(xs.intersections[0].time == 4);
     assert(xs.intersections[1].time == 4.5);
@@ -671,7 +672,9 @@ void test_linear_algebra()
     cam = camera(201, 101, M_PI / 2);
     mat_rotate_y(M_PI / 4, mat_1);
     mat_translate(0, -2, 5, trans_mat);
-    mat_mult(4, mat_1, trans_mat, cam.transform);
+
+    mat_mult(4, mat_1, trans_mat, mat_2);
+    set_camera_transform(&cam, mat_2);
     r = ray_for_pixel(cam, 100, 50);
     assert(tuple_equal(r.position, point(0, 2, -5)));
     assert(tuple_equal(r.direction, vector(sqrt(2) / 2, 0, -sqrt(2) / 2)));
@@ -682,7 +685,8 @@ void test_linear_algebra()
     from = point(0, 0, -5);
     to = point(0, 0, 0);
     up = vector(0, 1, 0);
-    view_transform(from, to, up, cam.transform);
+    view_transform(from, to, up, mat_1);
+    set_camera_transform(&cam, mat_1);
 
     Canvas image = render(cam, w);
     assert(tuple_equal(image.canvas[5][5], color(0.38066, 0.47583, 0.2855)));
@@ -693,7 +697,8 @@ void test_linear_algebra()
     from = point(0, 0, -0.8);
     to = point(0, 0, 0);
     up = vector(0, 1, 0);
-    view_transform(from, to, up, cam.transform);
+    view_transform(from, to, up, mat_2);
+    set_camera_transform(&cam, mat_2);
 
     image = render(cam, w);
     canvas_to_ppm(&image, "2_thing.ppm");
@@ -1301,6 +1306,13 @@ void set_transform(void *object, float *m)
     mat_inverse(4, m, inverse);
     memcpy((((Sphere *)object)->inverse_transform), inverse, sizeof(float) * 16);
 }
+void set_camera_transform(void *object, float *m)
+{
+    memcpy((((Camera *)object)->transform), m, sizeof(float) * 16);
+    float inverse[16];
+    mat_inverse(4, m, inverse);
+    memcpy((((Camera *)object)->inverse_transform), inverse, sizeof(float) * 16);
+}
 
 Tuple sphere_normal_at(Sphere s, Tuple p)
 {
@@ -1390,12 +1402,9 @@ World default_world()
     return wor;
 }
 
-Intersections intersect_world(World world, Ray r)
+void intersect_world(World world, Ray r, Intersections *ret)
 {
-
-    Intersections ret;
-    ret.intersections = malloc(sizeof(Intersection) * world.num_spheres * 2);
-    ret.count = 0;
+    ret->count = 0;
     int offset_counter = 0;
     for (int i = 0; i < world.num_spheres; i++)
     {
@@ -1412,18 +1421,17 @@ Intersections intersect_world(World world, Ray r)
             offset_counter++;
             continue;
         }
-        ret.count += 2;
-
-        float t1 = (-1 * b - sqrt(discriminant)) / (2 * a);
-        float t2 = (-1 * b + sqrt(discriminant)) / (2 * a);
+        ret->count += 2;
+        float discr_sqrt = sqrtf(discriminant);
+        float t1 = (-1 * b - discr_sqrt) / (2 * a);
+        float t2 = (-1 * b + discr_sqrt) / (2 * a);
         Intersection inter1 = intersection(t1, &world.spheres[i]);
         Intersection inter2 = intersection(t2, &world.spheres[i]);
 
-        ret.intersections[(i - offset_counter) * 2] = inter1;
-        ret.intersections[(i - offset_counter) * 2 + 1] = inter2;
+        ret->intersections[(i - offset_counter) * 2] = inter1;
+        ret->intersections[(i - offset_counter) * 2 + 1] = inter2;
     }
-    qsort(ret.intersections, ret.count, sizeof(Intersection), comp);
-    return ret;
+    qsort(ret->intersections, ret->count, sizeof(Intersection), comp);
 }
 
 Computation prepare_computations(Intersection inter, Ray r1)
@@ -1451,7 +1459,11 @@ Tuple shade_hit(World w, Computation comps)
 
 Tuple color_at(World w, Ray r)
 {
-    Intersections inters = intersect_world(w, r);
+    Intersections inters;
+    Intersection buffer[w.num_spheres * 2];
+
+    inters.intersections = buffer;
+    intersect_world(w, r, &inters);
     Intersection h = hit(inters);
     if (inters.count == 0)
         return color(0, 0, 0);
@@ -1489,7 +1501,10 @@ void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4])
 Camera camera(int hsize, int vsize, float field_of_view)
 {
     Camera c = {.hsize = hsize, .vsize = vsize, .field_of_view = field_of_view};
+
     mat_identity(c.transform);
+    mat_identity(c.inverse_transform);
+
     float half_view = tan(c.field_of_view / 2.0);
     float aspect = (float)c.hsize / (float)c.vsize;
     if (aspect >= 1)
@@ -1515,10 +1530,9 @@ Ray ray_for_pixel(Camera c, int x, int y)
 
     float world_x = c.half_width - xoffset;
     float world_y = c.half_height - yoffset;
-    float inverse[16];
-    mat_inverse_4x4(c.transform, inverse);
-    Tuple pixel = mat_tuple_mult(inverse, point(world_x, world_y, -1));
-    Tuple origin = mat_tuple_mult(inverse, point(0, 0, 0));
+
+    Tuple pixel = mat_tuple_mult(c.inverse_transform, point(world_x, world_y, -1));
+    Tuple origin = mat_tuple_mult(c.inverse_transform, point(0, 0, 0));
     Tuple direction = tuple_normalize(tuple_sub(pixel, origin));
 
     return ray(origin, direction);
@@ -1586,7 +1600,6 @@ void render_scene()
     w.spheres[4].material.color = color(0.5, 1.0, 0.1);
     w.spheres[4].material.diffuse = 0.7f;
     w.spheres[4].material.specular = 0.3f;
-
     w.spheres[5] = sphere();
     mat_scale(0.33, 0.33, 0.33, scale);
     mat_translate(-1.5, 0.33, -0.75, translate);
@@ -1598,8 +1611,10 @@ void render_scene()
 
     w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
 
-    Camera c = camera(2560, 1440, M_PI / 3);
-    view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), c.transform);
+    Camera c = camera(1920, 1080, M_PI / 3);
+    float mat_transform[16];
+    view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), mat_transform);
+    set_camera_transform(&c, mat_transform);
 
     Canvas image = render(c, w);
     canvas_to_ppm(&image, "test.ppm");

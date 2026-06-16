@@ -3,6 +3,6 @@
 int main(void)
 {
     test_linear_algebra();
-    puts("All checks pass.");
+    puts("linear_algebra tests pass");
     return 0;
 }
