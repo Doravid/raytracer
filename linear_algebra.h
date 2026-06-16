@@ -702,8 +702,10 @@ void test_linear_algebra()
 
     image = render(cam, w);
     canvas_to_ppm(&image, "2_thing.ppm");
-
-    render_scene();
+    for (int i = 0; i < 60; i++)
+    {
+        render_scene();
+    }
 }
 
 void render_circle()
@@ -1405,33 +1407,42 @@ World default_world()
 void intersect_world(World world, Ray r, Intersections *ret)
 {
     ret->count = 0;
-    int offset_counter = 0;
+
     for (int i = 0; i < world.num_spheres; i++)
     {
         Ray ray = ray_transform(r, world.spheres[i].inverse_transform);
         Tuple sphere_to_ray = tuple_sub(ray.position, world.spheres[i].position);
+
         float a = tuple_dot(ray.direction, ray.direction);
-        float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
-        float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1;
+        float half_b = tuple_dot(ray.direction, sphere_to_ray);
+        float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1.0f;
 
-        float discriminant = b * b - (4 * a * c);
+        float discriminant = half_b * half_b - (a * c);
 
-        if (discriminant < 0)
+        if (discriminant < 0.0f)
         {
-            offset_counter++;
             continue;
         }
-        ret->count += 2;
-        float discr_sqrt = sqrtf(discriminant);
-        float t1 = (-1 * b - discr_sqrt) / (2 * a);
-        float t2 = (-1 * b + discr_sqrt) / (2 * a);
-        Intersection inter1 = intersection(t1, &world.spheres[i]);
-        Intersection inter2 = intersection(t2, &world.spheres[i]);
 
-        ret->intersections[(i - offset_counter) * 2] = inter1;
-        ret->intersections[(i - offset_counter) * 2 + 1] = inter2;
+        float discr_sqrt = sqrtf(discriminant);
+        float t1 = (-half_b - discr_sqrt) / a;
+        float t2 = (-half_b + discr_sqrt) / a;
+
+        ret->intersections[ret->count++] = intersection(t1, &world.spheres[i]);
+        ret->intersections[ret->count++] = intersection(t2, &world.spheres[i]);
     }
-    qsort(ret->intersections, ret->count, sizeof(Intersection), comp);
+
+    for (int i = 1; i < ret->count; i++)
+    {
+        Intersection key = ret->intersections[i];
+        int j = i - 1;
+        while (j >= 0 && ret->intersections[j].time > key.time)
+        {
+            ret->intersections[j + 1] = ret->intersections[j];
+            j -= 1;
+        }
+        ret->intersections[j + 1] = key;
+    }
 }
 
 Computation prepare_computations(Intersection inter, Ray r1)
@@ -1611,7 +1622,7 @@ void render_scene()
 
     w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
 
-    Camera c = camera(1920, 1080, M_PI / 3);
+    Camera c = camera(640, 480, M_PI / 3);
     float mat_transform[16];
     view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), mat_transform);
     set_camera_transform(&c, mat_transform);

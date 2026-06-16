@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -Wextra -O3 -ffast-math -g 
+CFLAGS = -Wall -Wextra -O3 -ffast-math
 TARGET = raytracer.out
 SRCS = main.c
 DEPS = linear_algebra.h Makefile
