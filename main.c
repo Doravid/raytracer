@@ -48,7 +48,6 @@ int main(void)
         EndDrawing();
     }
 
-    // Clean up
     UnloadTexture(texture);
     free(image.pixels);
     CloseWindow();

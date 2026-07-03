@@ -21,7 +21,6 @@ void handle_input(struct camera *cam, Tuple *cam_pos)
         sinf(pitch),
         -cosf(yaw) * cosf(pitch));
 
-    // 4. Calculate the Right Vector (for Strafing A/D)
     Tuple up = vector(0, 1, 0);
     Tuple right = tuple_normalize(tuple_cross(forward, up));
 
