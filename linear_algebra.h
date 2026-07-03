@@ -11,13 +11,16 @@
 #include <stdint.h>
 
 #include "raylib.h"
-#define SCREEN_WIDTH (480)
-#define SCREEN_HEIGHT (360)
+
+#define SCREEN_WIDTH (480 * 2)
+#define SCREEN_HEIGHT (360 * 2)
+
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
 
 #define EPSILON (0.0001)
+#define MAX_INTERSECTIONS 128
 
 typedef struct
 {
@@ -72,7 +75,7 @@ typedef struct intersection
 typedef struct intersections
 {
     int count;
-    Intersection *intersections;
+    Intersection intersections[MAX_INTERSECTIONS];
 } Intersections;
 
 typedef struct point_light
@@ -566,9 +569,6 @@ void test_linear_algebra()
     // Scenario: Intersect a world with a ray
     World world = default_world();
     r = ray(point(0, 0, -5), vector(0, 0, 1));
-
-    Intersection buffer[world.num_spheres * 2];
-    inters.intersections = buffer;
 
     intersect_world(world, r, &xs);
     assert(xs.count == 4);
@@ -1278,7 +1278,11 @@ Intersections intersections(int count, ...)
     ret.count = count;
     if (count <= 0)
         return ret;
-    ret.intersections = malloc(count * sizeof(Intersection));
+    if (count > MAX_INTERSECTIONS)
+    {
+        fprintf(stderr, "ERROR: Exceeded MAX_INTERSECTIONS (%d). Truncating.\n", MAX_INTERSECTIONS);
+        count = MAX_INTERSECTIONS;
+    }
 
     va_list args;
     va_start(args, count);
@@ -1426,8 +1430,13 @@ void intersect_world(World world, struct ray r, Intersections *ret)
         float discriminant = half_b * half_b - (a * c);
 
         if (discriminant < 0.0f)
-        {
             continue;
+
+        // Error check: Prevent buffer overflow
+        if (ret->count + 2 > MAX_INTERSECTIONS)
+        {
+            fprintf(stderr, "ERROR: MAX_INTERSECTIONS exceeded in intersect_world. Dropping hits.\n");
+            break;
         }
 
         float discr_sqrt = sqrtf(discriminant);
@@ -1477,13 +1486,11 @@ Tuple shade_hit(World w, Computation comps)
 Tuple color_at(World w, struct ray r)
 {
     Intersections inters;
-    Intersection buffer[w.num_spheres * 2];
 
-    inters.intersections = buffer;
     intersect_world(w, r, &inters);
     Intersection h = hit(inters);
 
-    if (h.object == NULL || inters.count == 0)
+    if (h.object == NULL)
         return color(0, 0, 0);
 
     Computation mafs = prepare_computations(h, r);
@@ -1571,17 +1578,51 @@ Canvas render(struct camera c, World w)
 
     return image;
 }
+#define NUM_THREADS (8)
+struct thread_args
+{
+    int start_y, end_y;
+    struct camera c;
+    World w;
+    Canvas *image;
+};
+
+void *thread_render(void *args_void)
+{
+    struct thread_args *args = (struct thread_args *)args_void;
+
+    for (int y = args->start_y; y < args->end_y; y++)
+    {
+        for (int x = 0; x < args->c.hsize; x++)
+        {
+            struct ray ray = ray_for_pixel(args->c, x, y);
+            Tuple color = color_at(args->w, ray);
+            write_pixel(args->image, x, y, color);
+        }
+    }
+    return NULL;
+}
 
 Canvas render_frame(struct camera c, World w, Canvas *image)
 {
-    for (int y = 0; y < c.vsize; y++)
+    pthread_t threads[NUM_THREADS];
+    struct thread_args args[NUM_THREADS];
+
+    for (int i = 0; i < NUM_THREADS; i++)
     {
-        for (int x = 0; x < c.hsize; x++)
-        {
-            struct ray ray = ray_for_pixel(c, x, y);
-            Tuple color = color_at(w, ray);
-            write_pixel(image, x, y, color);
-        }
+        args[i] = (struct thread_args){
+            .start_y = i * (c.vsize / NUM_THREADS),
+            .end_y = (i + 1) * (c.vsize / NUM_THREADS),
+            .c = c,
+            .w = w,
+            .image = image};
+
+        pthread_create(&threads[i], NULL, thread_render, &args[i]);
+    }
+
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        pthread_join(threads[i], NULL);
     }
 
     return *image;

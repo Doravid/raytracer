@@ -43,9 +43,24 @@ void handle_input(struct camera *cam, Tuple *cam_pos)
     view_transform(*cam_pos, target, up, new_transform);
     set_camera_transform(cam, new_transform);
 }
+Texture2D init_texture(Canvas *image)
+{
+
+    Image raylib_img = {
+        .data = image->pixels,
+        .width = SCREEN_WIDTH,
+        .height = SCREEN_HEIGHT,
+        .format = PIXELFORMAT_UNCOMPRESSED_R32G32B32,
+        .mipmaps = 1};
+    return LoadTextureFromImage(raylib_img);
+}
 
 void init_world(World *werld)
 {
+    *werld = default_world();
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(800, 600, "Raytracer");
+    SetTargetFPS(999);
     werld->num_spheres = 6;
 
     float temp1[16], temp2[16];

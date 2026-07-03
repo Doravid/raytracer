@@ -1,4 +1,5 @@
 #include <math.h>
+#include <pthread.h>
 
 #include "raylib.h"
 #include "window.h"
@@ -6,31 +7,16 @@
 
 int main(void)
 {
-    int renderWidth = 480;
-    int renderHeight = 360;
-
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 600, "Raytracer");
-    SetTargetFPS(999);
-
-    // 1. Setup your raytracer world and camera
-    struct world world = default_world();
-    init_world(&world);
-    struct camera cam = camera(renderWidth, renderHeight, M_PI / 3);
-    float mat_transform[16];
+    struct world world;
+    Canvas image = canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
+    struct camera cam = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
     Tuple cam_pos = point(0, 1.5, -5);
+    float mat_transform[16];
+
+    init_world(&world);
     view_transform(cam_pos, point(0, 1, 0), vector(0, 1, 0), mat_transform);
     set_camera_transform(&cam, mat_transform);
-
-    Canvas image = canvas(renderWidth, renderHeight);
-
-    Image raylib_img = {
-        .data = image.pixels,
-        .width = renderWidth,
-        .height = renderHeight,
-        .format = PIXELFORMAT_UNCOMPRESSED_R32G32B32,
-        .mipmaps = 1};
-    Texture2D texture = LoadTextureFromImage(raylib_img);
+    Texture2D texture = init_texture(&image);
 
     while (!WindowShouldClose())
     {
@@ -40,28 +26,25 @@ int main(void)
             DisableCursor();
         }
         handle_input(&cam, &cam_pos);
+
         render_frame(cam, world, &image);
 
-        // Send the updated pixels to the GPU
         UpdateTexture(texture, image.pixels);
 
         float screenW = (float)GetScreenWidth();
         float screenH = (float)GetScreenHeight();
-        float scale = fmaxf(screenW / renderWidth, screenH / renderHeight);
+        float scale = fmaxf(screenW / SCREEN_WIDTH, screenH / SCREEN_HEIGHT);
 
-        Rectangle sourceRec = {0.0f, 0.0f, (float)renderWidth, (float)renderHeight};
+        Rectangle sourceRec = {0.0f, 0.0f, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT};
         Rectangle destRec = {
-            (screenW - ((float)renderWidth * scale)) * 0.5f,
-            (screenH - ((float)renderHeight * scale)) * 0.5f,
-            (float)renderWidth * scale,
-            (float)renderHeight * scale};
-        Vector2 origin = {0.0f, 0.0f};
-
-        // Draw the frame
+            (screenW - ((float)SCREEN_WIDTH * scale)) * 0.5f,
+            (screenH - ((float)SCREEN_HEIGHT * scale)) * 0.5f,
+            (float)SCREEN_WIDTH * scale,
+            (float)SCREEN_HEIGHT * scale};
         BeginDrawing();
-        DrawTexturePro(texture, sourceRec, destRec, origin, 0.0f, WHITE);
-        DrawFPS(5, 5);
 
+        DrawTexturePro(texture, sourceRec, destRec, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+        DrawFPS(5, 5);
         EndDrawing();
     }
 
@@ -69,6 +52,5 @@ int main(void)
     UnloadTexture(texture);
     free(image.pixels);
     CloseWindow();
-
     return 0;
 }
