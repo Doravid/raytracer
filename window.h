@@ -5,8 +5,17 @@
 #define MOVE_SPEED (0.2f)
 void handle_input(struct camera *cam, Tuple *cam_pos)
 {
-    static float pitch = 0.0f;
-    static float yaw = 0.0f;
+    static float pitch;
+    static float yaw;
+    static bool init = false;
+
+    if (!init)
+    {
+        Tuple fwd = mat_tuple_mult(cam->inverse_transform, vector(0, 0, -1));
+        yaw = atan2f(fwd.x, -fwd.z);
+        pitch = asinf(fwd.y);
+        init = true;
+    }
 
     Vector2 mouseDelta = GetMouseDelta();
     pitch -= mouseDelta.y * MOUSE_SENSITIVITY;
@@ -21,8 +30,9 @@ void handle_input(struct camera *cam, Tuple *cam_pos)
         sinf(pitch),
         -cosf(yaw) * cosf(pitch));
 
-    Tuple up = vector(0, 1, 0);
-    Tuple right = tuple_normalize(tuple_cross(forward, up));
+    Tuple world_up = vector(0, 1, 0);
+    Tuple right = tuple_normalize(tuple_cross(forward, world_up));
+    Tuple up = tuple_normalize(tuple_cross(right, forward));
 
     if (IsKeyDown(KEY_W))
         *cam_pos = tuple_add(*cam_pos, tuple_scale(forward, MOVE_SPEED));
@@ -66,7 +76,7 @@ void init_world(World *werld)
     float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
 
     werld->spheres[0] = sphere();
-    mat_scale(10, 0.01, 10, scale);
+    mat_scale(10, 0.1, 10, scale);
     set_transform(&werld->spheres[0], scale);
     werld->spheres[0].material.color = color(1, 0.9, 0.9);
     werld->spheres[0].material.specular = 0;

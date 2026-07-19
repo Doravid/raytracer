@@ -14,6 +14,7 @@
 
 #define SCREEN_WIDTH (480 * 2)
 #define SCREEN_HEIGHT (360 * 2)
+#define NUM_THREADS (8)
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
@@ -1578,7 +1579,6 @@ Canvas render(struct camera c, World w)
 
     return image;
 }
-#define NUM_THREADS (8)
 struct thread_args
 {
     int start_y, end_y;

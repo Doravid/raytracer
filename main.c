@@ -10,11 +10,12 @@ int main(void)
     struct world world;
     Canvas image = canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
     struct camera cam = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
-    Tuple cam_pos = point(0, 1.5, -5);
+    Tuple cam_pos = point(2, 3, -10);
     float mat_transform[16];
 
     init_world(&world);
-    view_transform(cam_pos, point(0, 1, 0), vector(0, 1, 0), mat_transform);
+    view_transform(cam_pos, point(0, 0, 0), vector(0, 1, 0), mat_transform);
+
     set_camera_transform(&cam, mat_transform);
     Texture2D texture = init_texture(&image);
 
