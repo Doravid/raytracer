@@ -64,7 +64,7 @@ Texture2D init_texture(Canvas *image)
     return LoadTextureFromImage(raylib_img);
 }
 
-void init_world(World *werld)
+void init_world(world_t *werld)
 {
     *werld = default_world();
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);

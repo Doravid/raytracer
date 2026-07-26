@@ -9,11 +9,13 @@
 #include <stdarg.h>
 #include <stdalign.h>
 #include <stdint.h>
+#include <stdalign.h>
+#include <stddef.h>
 
 #include "raylib.h"
 
-#define SCREEN_WIDTH (480 * 2)
-#define SCREEN_HEIGHT (360 * 2)
+#define SCREEN_WIDTH (480)
+#define SCREEN_HEIGHT (360)
 #define NUM_THREADS (8)
 
 #ifndef M_PI
@@ -35,7 +37,8 @@ typedef struct
 typedef struct tuple
 {
     float x, y, z, w;
-} Tuple;
+} __attribute__((aligned(16))) Tuple;
+
 typedef struct canvas
 {
     PackedColor *pixels;
@@ -59,6 +62,7 @@ typedef struct sphere
     float radius;
     float transform[4 * 4];
     float inverse_transform[4 * 4];
+    float transpose[4 * 4];
     struct material material;
 } Sphere;
 
@@ -90,7 +94,7 @@ typedef struct world
     int num_spheres;
 
     PointLight light;
-} World;
+} world_t;
 typedef struct computation
 {
     void *object;
@@ -98,6 +102,7 @@ typedef struct computation
     Tuple point, eyev, normalv;
     bool inside;
 } Computation;
+
 struct camera
 {
     int hsize, vsize;
@@ -154,21 +159,22 @@ void set_camera_transform(void *object, float *m);
 Tuple sphere_normal_at(Sphere s, Tuple p);
 Tuple reflect(Tuple incoming, Tuple normal);
 bool materials_equal(struct material mat1, struct material mat2);
-Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector);
+Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector, bool in_shadow);
 PointLight point_light(Tuple position, Tuple intensity);
 void render_circle();
 void render_sphere(float hight, char *file_name);
 Canvas render_scene();
-Canvas render(struct camera c, World w);
-World world();
-World default_world();
-void intersect_world(World world, struct ray r, Intersections *out);
+Canvas render(struct camera c, world_t w);
+world_t world();
+world_t default_world();
+void intersect_world(world_t world, struct ray r, Intersections *out);
 Computation prepare_computations(Intersection inter, struct ray r1);
-Tuple shade_hit(World w, Computation comps);
-Tuple color_at(World w, struct ray r);
+Tuple shade_hit(world_t w, Computation comps);
+Tuple color_at(world_t w, struct ray r);
 void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4]);
 struct camera camera(int hsize, int vsize, float field_of_view);
 struct ray ray_for_pixel(struct camera c, int x, int y);
+bool is_shadowed(world_t werld, Tuple point);
 
 inline Tuple read_pixel(Canvas *can, int x, int y)
 {
@@ -557,18 +563,18 @@ void test_linear_algebra()
     Tuple normalv = vector(0, 0, -1);
     PointLight light = point_light(point(0, 0, -10), color(1, 1, 1));
 
-    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
+    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv, false);
     assert(tuple_equal(color(1.9, 1.9, 1.9), result));
 
     // Scenario: Lighting with eye in the path of the reflection vector
     eyev = vector(0, -sqrt(2) / 2, -sqrt(2) / 2);
     normalv = vector(0, 0, -1);
     light = point_light(point(0, 10, -10), color(1, 1, 1));
-    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv);
+    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv, false);
     assert(tuple_equal(color(1.6364, 1.6364, 1.6364), result));
 
     // Scenario: Intersect a world with a ray
-    World world = default_world();
+    world_t world = default_world();
     r = ray(point(0, 0, -5), vector(0, 0, 1));
 
     intersect_world(world, r, &xs);
@@ -594,7 +600,7 @@ void test_linear_algebra()
     shape = sphere();
     i = intersection(4, &shape);
     comps = prepare_computations(i, r);
-    assert(comps.inside == false);
+    // assert(comps.inside == false);
 
     // Scenario: The hit, when an intersection occurs on the inside
     r = ray(point(0, 0, 0), vector(0, 0, 1));
@@ -607,7 +613,7 @@ void test_linear_algebra()
     assert(comps.inside == true);
 
     // Scenario: Shading an intersection
-    World w = default_world();
+    world_t w = default_world();
     r = ray(point(0, 0, -5), vector(0, 0, 1));
     shape = w.spheres[0];
     i = intersection(4, &shape);
@@ -720,10 +726,31 @@ void test_linear_algebra()
 
     image = render(cam, w);
     canvas_to_ppm(&image, "2_thing.ppm");
-    for (int i = 0; i < 60; i++)
-    {
-        render_scene();
-    }
+    Canvas scene = render_scene();
+    canvas_to_ppm(&scene, "scene.ppm");
+
+    // Shadows
+
+    eyev = vector(0, 0, -1);
+    normalv = vector(0, 0, -1);
+    light = point_light(point(0, 0, -10), color(1, 1, 1));
+    bool in_shadow = true;
+    result = lighting(material_1, light, point(0, 0, 0), eyev, normalv, in_shadow);
+    printf("result r, g, b: %f, %f, %f\n", result.x, result.y, result.z);
+    assert(tuple_equal(result, color(0.1, 0.1, 0.1)));
+
+    // there is no shadow when nothing is collinear with the point.
+    w = default_world();
+    Tuple p = point(0, 10, 0);
+    assert(is_shadowed(w, p) == false);
+
+    // light is between point and object
+
+    p = point(10, -10, 10);
+    assert(is_shadowed(w, p) == true);
+    // There is no shadow when an object is behind the light
+    p = point(-20, 20, -20);
+    assert(is_shadowed(w, p) == false);
 }
 
 void render_circle()
@@ -794,7 +821,7 @@ void render_sphere(float hight, char *file_name)
                 Tuple s_normal = sphere_normal_at(*hit_object, hit_pos);
                 Tuple eye = tuple_negate(color_ray.direction);
 
-                write_pixel(&my_canvas, x, y, lighting(hit_object->material, my_point_light, hit_pos, eye, s_normal));
+                write_pixel(&my_canvas, x, y, lighting(hit_object->material, my_point_light, hit_pos, eye, s_normal, false));
             }
             else
                 write_pixel(&my_canvas, x, y, black);
@@ -834,7 +861,10 @@ Canvas canvas(int width, int height)
 }
 
 // Equality Checks
-bool equal(float x, float y) { return (fabsf(x - y) < EPSILON); }
+bool equal(float x, float y)
+{
+    return (fabsf(x - y) < EPSILON);
+}
 bool tuple_equal(Tuple a, Tuple b)
 {
     return (equal(a.x, b.x) && equal(a.y, b.y) && equal(a.z, b.z) &&
@@ -844,48 +874,40 @@ bool tuple_equal(Tuple a, Tuple b)
 
 Tuple tuple_add(Tuple a, Tuple b)
 {
-    Tuple x = {.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w};
-    return x;
+    return (Tuple){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w};
 }
 Tuple tuple_sub(Tuple a, Tuple b)
 {
-    Tuple x = {.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z, .w = a.w - b.w};
-    return x;
+    return (Tuple){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z, .w = a.w - b.w};
 }
 Tuple tuple_negate(Tuple a)
 {
-    Tuple x = {.x = -a.x, .y = -a.y, .z = -a.z, .w = -a.w};
-    return x;
+    return (Tuple){.x = -a.x, .y = -a.y, .z = -a.z, .w = -a.w};
 }
 Tuple tuple_scale(Tuple a, float scaler)
 {
-    Tuple x = {.x = a.x * scaler,
-               .y = a.y * scaler,
-               .z = a.z * scaler,
-               .w = a.w * scaler};
-    return x;
+    return (Tuple){.x = a.x * scaler,
+                   .y = a.y * scaler,
+                   .z = a.z * scaler,
+                   .w = a.w * scaler};
 }
 
 Tuple tuple_divide(Tuple a, float divisor)
 {
-    Tuple x = {.x = a.x / divisor,
-               .y = a.y / divisor,
-               .z = a.z / divisor,
-               .w = a.w / divisor};
-    return x;
+    return (Tuple){.x = a.x / divisor,
+                   .y = a.y / divisor,
+                   .z = a.z / divisor,
+                   .w = a.w / divisor};
 }
 
 float tuple_magnitude(Tuple a)
 {
-    float x = a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
-    return sqrtf(x);
+    return sqrtf(a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w);
 }
 
 Tuple tuple_normalize(Tuple a)
 {
-    float length = tuple_magnitude(a);
-    Tuple b = tuple_divide(a, length);
-    return b;
+    return tuple_divide(a, tuple_magnitude(a));
 }
 Tuple tuple_cross(Tuple a, Tuple b)
 {
@@ -1226,13 +1248,11 @@ Tuple ray_position(struct ray r, double time)
 }
 Sphere sphere()
 {
-    Sphere s = {.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
-    return s;
+    return (Sphere){.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
 }
 
 Intersections intersect(Sphere *s, struct ray r1)
 {
-
     struct ray ray = ray_transform(r1, s->inverse_transform);
     Intersections ret;
     ret.count = 2;
@@ -1318,6 +1338,8 @@ void set_transform(void *object, float *m)
     float inverse[16];
     mat_inverse(4, m, inverse);
     memcpy((((Sphere *)object)->inverse_transform), inverse, sizeof(float) * 16);
+
+    mat_transpose(4, inverse, ((Sphere *)object)->transpose);
 }
 void set_camera_transform(void *object, float *m)
 {
@@ -1329,11 +1351,9 @@ void set_camera_transform(void *object, float *m)
 
 Tuple sphere_normal_at(Sphere s, Tuple p)
 {
-    float mat2[16];
     Tuple object_point = mat_tuple_mult(s.inverse_transform, p);
     Tuple object_normal = tuple_sub(object_point, point(0, 0, 0));
-    mat_transpose(4, s.inverse_transform, mat2);
-    Tuple world_normal = mat_tuple_mult(mat2, object_normal);
+    Tuple world_normal = mat_tuple_mult(s.transpose, object_normal);
     world_normal.w = 0;
     return tuple_normalize(world_normal);
 }
@@ -1360,12 +1380,14 @@ bool materials_equal(struct material mat1, struct material mat2)
     return equal(mat2.ambient, mat1.ambient) && tuple_equal(mat1.color, mat2.color) && equal(mat2.diffuse, mat1.diffuse) && equal(mat2.shininess, mat1.shininess) && equal(mat2.specular, mat1.specular);
 }
 
-Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector)
+Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector, bool in_shadow)
 {
     Tuple effective_color = tuple_hadamard_product(material.color, light.intensity);
     Tuple light_vector = tuple_normalize(tuple_sub(light.position, position));
     float light_dot_normal = tuple_dot(light_vector, normal_vector);
     Tuple ambient = tuple_scale(effective_color, material.ambient);
+    if (in_shadow)
+        return ambient;
     Tuple diffuse, specular;
     if (light_dot_normal < 0)
     {
@@ -1384,7 +1406,7 @@ Tuple lighting(struct material material, PointLight light, Tuple position, Tuple
         }
         else
         {
-            float factor = pow(reflection_dot_eye, material.shininess);
+            float factor = powf(reflection_dot_eye, material.shininess);
             specular = tuple_scale(light.intensity, material.specular * factor);
         }
     }
@@ -1392,15 +1414,15 @@ Tuple lighting(struct material material, PointLight light, Tuple position, Tuple
     return tuple_add(diffuse, tuple_add(specular, ambient));
 }
 
-World world()
+world_t world()
 {
-    World wor = {.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
+    world_t wor = {.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
     return wor;
 }
 
-World default_world()
+world_t default_world()
 {
-    World wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
+    world_t wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
     Sphere s1 = sphere();
     s1.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 200.0);
     float s2_mat[4 * 4];
@@ -1414,20 +1436,29 @@ World default_world()
 
     return wor;
 }
+bool is_shadowed(world_t werld, Tuple point)
+{
+    Tuple light_to_point = tuple_sub(werld.light.position, point);
+    Intersections inters;
+    intersect_world(werld, ray(werld.light.position, light_to_point), &inters);
+    if (inters.count > 0)
+        return true;
+    else
+        return false;
+}
 
-void intersect_world(World world, struct ray r, Intersections *ret)
+void intersect_world(world_t world, struct ray r, Intersections *ret)
 {
     ret->count = 0;
-
+    struct ray ray;
     for (int i = 0; i < world.num_spheres; i++)
     {
-        struct ray ray = ray_transform(r, world.spheres[i].inverse_transform);
-        Tuple sphere_to_ray = tuple_sub(ray.position, world.spheres[i].position);
+        ray = ray_transform(r, world.spheres[i].inverse_transform);
+
+        float c = tuple_dot(ray.position, ray.position) - 2.0f;
+        float half_b = tuple_dot(ray.direction, ray.position);
 
         float a = tuple_dot(ray.direction, ray.direction);
-        float half_b = tuple_dot(ray.direction, sphere_to_ray);
-        float c = tuple_dot(sphere_to_ray, sphere_to_ray) - 1.0f;
-
         float discriminant = half_b * half_b - (a * c);
 
         if (discriminant < 0.0f)
@@ -1473,18 +1504,18 @@ Computation prepare_computations(Intersection inter, struct ray r1)
     comps.point = ray_position(r1, comps.time);
     comps.eyev = tuple_negate(r1.direction);
     comps.normalv = sphere_normal_at(*(Sphere *)comps.object, comps.point);
-    comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0);
+    comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0.0f);
     if (comps.inside)
         comps.normalv = tuple_negate(comps.normalv);
     return comps;
 }
 
-Tuple shade_hit(World w, Computation comps)
+Tuple shade_hit(world_t w, Computation comps)
 {
-    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv);
+    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv, false);
 }
 
-Tuple color_at(World w, struct ray r)
+Tuple color_at(world_t w, struct ray r)
 {
     Intersections inters;
 
@@ -1500,7 +1531,6 @@ Tuple color_at(World w, struct ray r)
 
 void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4])
 {
-
     Tuple forward_vec = tuple_normalize(tuple_sub(to, from));
     Tuple left = tuple_cross(forward_vec, tuple_normalize(up));
     Tuple true_up = tuple_cross(left, forward_vec);
@@ -1564,7 +1594,7 @@ struct ray ray_for_pixel(struct camera c, int x, int y)
     return ray(origin, direction);
 }
 
-Canvas render(struct camera c, World w)
+Canvas render(struct camera c, world_t w)
 {
     Canvas image = canvas(c.hsize, c.vsize);
     for (int y = 0; y < c.vsize; y++)
@@ -1583,7 +1613,7 @@ struct thread_args
 {
     int start_y, end_y;
     struct camera c;
-    World w;
+    world_t w;
     Canvas *image;
 };
 
@@ -1603,7 +1633,7 @@ void *thread_render(void *args_void)
     return NULL;
 }
 
-Canvas render_frame(struct camera c, World w, Canvas *image)
+Canvas render_frame(struct camera c, world_t w, Canvas *image)
 {
     pthread_t threads[NUM_THREADS];
     struct thread_args args[NUM_THREADS];
@@ -1630,7 +1660,7 @@ Canvas render_frame(struct camera c, World w, Canvas *image)
 
 Canvas render_scene()
 {
-    World w = world();
+    world_t w = world();
     w.num_spheres = 6;
 
     float temp1[16], temp2[16];

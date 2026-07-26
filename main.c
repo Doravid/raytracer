@@ -7,6 +7,9 @@
 
 int main(void)
 {
+    test_linear_algebra();
+    return EXIT_SUCCESS;
+
     struct world world;
     Canvas image = canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
     struct camera cam = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
