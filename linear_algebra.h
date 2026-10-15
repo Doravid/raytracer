@@ -872,16 +872,14 @@ world_t default_world()
 }
 bool is_shadowed(world_t werld, Tuple point)
 {
-    Tuple light_to_point = tuple_sub(werld.light.position, point);
-    float distance = tuple_magnitude(light_to_point);
-    Tuple direction = tuple_normalize(light_to_point);
-    struct ray r = (struct ray){.position = point, .direction = direction};
+    Tuple v = tuple_sub(werld.light.position, point);
+    float distance = tuple_magnitude(v);
+    Tuple direction = tuple_normalize(v);
 
     Intersections inters;
-    intersect_world(werld, r, &inters);
+    intersect_world(werld, ray(point, direction), &inters);
 
     Intersection h = hit(inters);
-
     if (h.object != NULL && h.time < distance)
         return true;
     else
