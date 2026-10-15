@@ -1,8 +1,10 @@
+#pragma once
 #include <raylib.h>
 #include "linear_algebra.h"
 
 #define MOUSE_SENSITIVITY (0.002f)
 #define MOVE_SPEED (0.2f)
+
 void handle_input(struct camera *cam, Tuple *cam_pos)
 {
     static float pitch;

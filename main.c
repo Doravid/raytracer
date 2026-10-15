@@ -4,11 +4,11 @@
 #include "raylib.h"
 #include "window.h"
 #include "linear_algebra.h"
+#include "tests.h"
 
 int main(void)
 {
     test_linear_algebra();
-    return EXIT_SUCCESS;
 
     struct world world;
     Canvas image = canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
