@@ -1,0 +1,6 @@
+*.txt
+*.out
+*.ppm
+*.mp4
+.vscode/**
+.vscode
