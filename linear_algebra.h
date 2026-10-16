@@ -127,10 +127,10 @@ float tuple_magnitude(Tuple a);
 Tuple tuple_normalize(Tuple a);
 float tuple_dot(Tuple a, Tuple b);
 Tuple tuple_cross(Tuple a, Tuple b);
-Canvas canvas(int width, int height);
+Canvas new_canvas(int width, int height);
 Tuple color(float red, float green, float blue);
 void canvas_to_ppm(Canvas *can, char *file_name);
-void mat_identity(float *out);
+void mat_identity_4x4(float *out);
 bool mat_equal(int size, float *mat_a, float *mat_b);
 void mat_mult(int size, float *mat_a, float *mat_b, float *mat_out);
 void mat_transpose(int size, float *mat_a, float *mat_out);
@@ -146,7 +146,6 @@ void mat_rotate_y(float r, float *out);
 void mat_rotate_z(float r, float *out);
 void mat_scale(float x, float y, float z, float *out);
 void mat_sheer(float a, float b, float c, float d, float e, float f, float *out);
-struct ray ray(Tuple origin, Tuple direction);
 Tuple ray_position(struct ray r, double time);
 struct ray ray_transform(struct ray r, float *m);
 Sphere sphere();
@@ -162,10 +161,10 @@ bool materials_equal(struct material mat1, struct material mat2);
 Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector, bool in_shadow);
 PointLight point_light(Tuple position, Tuple intensity);
 void render_circle();
-void render_sphere(float hight, char *file_name);
+void render_sphere(float height, char *file_name);
 Canvas render_scene();
 Canvas render(struct camera c, world_t w);
-world_t world();
+world_t new_world();
 world_t default_world();
 void intersect_world(world_t world, struct ray r, Intersections *out);
 Computation prepare_computations(Intersection inter, struct ray r1);
@@ -174,23 +173,42 @@ Tuple color_at(world_t w, struct ray r);
 void view_transform(Tuple from, Tuple to, Tuple up, float output_matrix[4 * 4]);
 struct camera camera(int hsize, int vsize, float field_of_view);
 struct ray ray_for_pixel(struct camera c, int x, int y);
-bool is_shadowed(world_t werld, Tuple point);
+bool is_shadowed(world_t world, Tuple point);
 
-inline Tuple read_pixel(Canvas *can, int x, int y)
+/**
+ * @brief Reads a pixel from a canvas at a particular x,y location.
+ *
+ * @param[in] canvas the canvas that gets its pixel read from.
+ * @param x x-pos of the pixel
+ * @param y y-pos of the pixel
+ * @return Tuple The colour that was at that position
+ */
+inline Tuple read_pixel(Canvas *canvas, int x, int y)
 {
-    int index = y * can->width + x;
-    return color(can->pixels[index].r, can->pixels[index].g, can->pixels[index].b);
+    int index = y * canvas->width + x;
+    return color(canvas->pixels[index].r, canvas->pixels[index].g, canvas->pixels[index].b);
 }
-inline void write_pixel(Canvas *can, int x, int y, Tuple col)
+/**
+ * @brief writes a pixel to a canvas.
+ *
+ * @param[out, in] canvas the canvas that gets its pixel written.
+ * @param x x-pos of the pixel
+ * @param y y-pos of the pixel
+ * @param colour the colour that gets written to the canvas.
+ */
+inline void write_pixel(Canvas *canvas, int x, int y, Tuple colour)
 {
-    int index = y * can->width + x;
-    can->pixels[index] = (PackedColor){col.x, col.y, col.z};
+    int index = y * canvas->width + x;
+    canvas->pixels[index] = (PackedColor){colour.x, colour.y, colour.z};
 }
 
+/**
+ * @brief It renders a cool circle (.ppm)
+ */
 void render_circle()
 {
     const int SIZE = 480;
-    Canvas my_canvas = canvas(SIZE, SIZE);
+    Canvas my_canvas = new_canvas(SIZE, SIZE);
     Tuple red = color(.95, 0.2, 0.2);
     Tuple camera_origin = point(0, 0, 0);
     Tuple pixel_point, camera_vector;
@@ -208,7 +226,7 @@ void render_circle()
         {
             pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)(y - (SIZE / 2)) / SIZE, 0.75);
             camera_vector = tuple_sub(pixel_point, camera_origin);
-            color_ray = ray(camera_origin, camera_vector);
+            color_ray = (struct ray){camera_origin, camera_vector};
 
             Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
             if (sphere_intersects.count > 0)
@@ -219,79 +237,37 @@ void render_circle()
     }
     canvas_to_ppm(&my_canvas, "cool_circle.ppm");
 }
-void render_sphere(float hight, char *file_name)
-{
-    const int SIZE = 240;
-    Canvas my_canvas = canvas(SIZE, SIZE);
-    Tuple camera_origin = point(0, 0, 0);
-    Tuple pixel_point, camera_vector;
-    struct ray color_ray;
-    Sphere cool_red_sphere = sphere();
-    Tuple black = color(0, 0, 0);
-    camera_origin = point(0, hight, 0);
-    cool_red_sphere = sphere();
-    cool_red_sphere.material.color = color(0.85, 0.39, 0.18);
-    PointLight my_point_light = point_light(point(-10, 10, -10), color(1.0, 0.9, 0.95));
-    black = color(0, 0, 0);
-    float sphere_mat[16];
-    mat_translate(0, 0, 2.0, sphere_mat);
-    set_transform(&cool_red_sphere, sphere_mat);
 
-    for (int x = 0; x < SIZE; x++)
-    {
-        for (int y = 0; y < SIZE; y++)
-        {
-            pixel_point = point((float)(x - (SIZE / 2)) / SIZE, (float)((SIZE / 2) - y) / SIZE, 0.75);
-            camera_vector = tuple_normalize(tuple_sub(pixel_point, camera_origin));
-            color_ray = ray(camera_origin, camera_vector);
-
-            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
-            if (sphere_intersects.count > 0)
-            {
-                float hit_time = sphere_intersects.intersections[0].time;
-                Sphere *hit_object = (Sphere *)sphere_intersects.intersections[0].object;
-
-                Tuple hit_pos = ray_position(color_ray, hit_time);
-                Tuple s_normal = sphere_normal_at(*hit_object, hit_pos);
-                Tuple eye = tuple_negate(color_ray.direction);
-
-                write_pixel(&my_canvas, x, y, lighting(hit_object->material, my_point_light, hit_pos, eye, s_normal, false));
-            }
-            else
-                write_pixel(&my_canvas, x, y, black);
-        }
-    }
-    canvas_to_ppm(&my_canvas, file_name);
-}
 // Create The Objects
 
 Tuple tuple(float x, float y, float z, float w)
 {
-    Tuple tup = {.x = x, .y = y, .z = z, .w = w};
-    return tup;
+    return (Tuple){.x = x, .y = y, .z = z, .w = w};
 }
 Tuple point(float x, float y, float z)
 {
-    Tuple new_point = {.x = x, .y = y, .z = z, .w = 1};
-    return new_point;
+    return (Tuple){.x = x, .y = y, .z = z, .w = 1};
 }
 Tuple vector(float x, float y, float z)
 {
-    Tuple new_point = {.x = x, .y = y, .z = z, .w = 0};
-    return new_point;
+    return (Tuple){.x = x, .y = y, .z = z, .w = 0};
 }
 Tuple color(float red, float green, float blue)
 {
-    Tuple new_point = {.x = red, .y = green, .z = blue, .w = 0};
-    return new_point;
+    return (Tuple){.x = red, .y = green, .z = blue, .w = 0};
 }
 
-Canvas canvas(int width, int height)
+/**
+ * @brief Creates a new canvas. THIS ALLOCATES MEMORY.
+ *
+ * @param width the height of the canvas.
+ * @param height the width of the canvas
+ * @return Canvas with its allocated frame buffer.
+ */
+Canvas new_canvas(int width, int height)
 {
     PackedColor *pixels = calloc(width * height, sizeof(PackedColor));
-
-    Canvas c = {.pixels = pixels, .height = height, .width = width};
-    return c;
+    return (Canvas){.pixels = pixels, .height = height, .width = width};
 }
 
 // Equality Checks
@@ -339,15 +315,36 @@ float tuple_magnitude(Tuple a)
     return sqrtf(a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w);
 }
 
+/**
+ * @brief Finds the normalized version of a tuple. E.g the tuple that has a magnitude / length of 1.
+ *
+ * @param a The tuple to be normalized.
+ * @return Tuple The normalized tuple.
+ */
 Tuple tuple_normalize(Tuple a)
 {
     return tuple_divide(a, tuple_magnitude(a));
 }
+
+/**
+ * @brief Takes the cross product of two tuples
+ *
+ * @param a The first tuple
+ * @param b The second tuple
+ * @return Tuple the resulting cross product.
+ */
 Tuple tuple_cross(Tuple a, Tuple b)
 {
     return vector(a.y * b.z - (a.z * b.y), a.z * b.x - (a.x * b.z),
                   (a.x * b.y) - (a.y * b.x));
 }
+/**
+ * @brief Takes the dot product of two tuples
+ *
+ * @param a The first tuple
+ * @param b The second tuple
+ * @return float the result of the dot product
+ */
 float tuple_dot(Tuple a, Tuple b)
 {
     return (a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
@@ -357,20 +354,28 @@ Tuple tuple_hadamard_product(Tuple a, Tuple b)
 {
     return color(a.x * b.x, a.y * b.y, a.z * b.z);
 }
-
-void canvas_to_ppm(Canvas *can, char *file_name)
+/**
+ * @brief Writes a Canvas struct as a PPM to a file.
+ *
+ * @param canvas the canvas that holds the image data. CAN NOT BE NULL.
+ * @param file_name the name of the image file that will be written. Should include .ppm at the end as best practice.
+ */
+void canvas_to_ppm(Canvas *canvas, char *file_name)
 {
-    char *ppm_data = malloc(sizeof(char) * 3 * can->width * can->height + 1);
+    if (canvas == NULL || file_name == NULL)
+        fprintf(stderr, "Failed to write canvas to file, NULL filename or canvas.");
 
+    char *ppm_data = malloc(sizeof(char) * 3 * canvas->width * canvas->height + 1);
     char *pointer = ppm_data;
-    for (int i = 0; i < can->height; i++)
+
+    for (int y = 0; y < canvas->height; y++)
     {
-        for (int j = 0; j < can->width; j++)
+        for (int x = 0; x < canvas->width; x++)
         {
-            int index = i * can->width + j;
-            int red = (int)(can->pixels[index].r * 255);
-            int green = (int)(can->pixels[index].g * 255);
-            int blue = (int)(can->pixels[index].b * 255);
+            int index = y * canvas->width + x;
+            int red = (int)(canvas->pixels[index].r * 255);
+            int green = (int)(canvas->pixels[index].g * 255);
+            int blue = (int)(canvas->pixels[index].b * 255);
             if (red > 255)
                 red = 255;
             if (red < 0)
@@ -397,15 +402,18 @@ void canvas_to_ppm(Canvas *can, char *file_name)
     pointer[0] = '\n';
     FILE *file = fopen(file_name, "wb");
     char temp[50];
-    int header_len = sprintf(temp, "P6\n%d %d\n255\n", can->width, can->height);
+    int header_len = sprintf(temp, "P6\n%d %d\n255\n", canvas->width, canvas->height);
 
     fwrite(temp, 1, header_len, file);
-    fwrite(ppm_data, 1, (can->width * can->height * 3) + 1, file);
+    fwrite(ppm_data, 1, (canvas->width * canvas->height * 3) + 1, file);
     fclose(file);
 
     free(ppm_data);
 }
-void mat_identity(float *out)
+/**
+ * @brief takes a 4x4 matrix and sets it to the identity matrix.
+ */
+void mat_identity_4x4(float *out)
 {
     memset(out, 0, sizeof(float) * 16);
     out[0] = 1;
@@ -413,6 +421,14 @@ void mat_identity(float *out)
     out[10] = 1;
     out[15] = 1;
 }
+/**
+ * @brief Checks if two matrices are equal.
+ *
+ * @param size The size of the matrices. size * size matrix is assumed.
+ * @param mat_a The first matrix
+ * @param mat_b The second matrix
+ * @return true if they are equal, false if they are not equal.
+ */
 bool mat_equal(int size, float *mat_a, float *mat_b)
 {
     for (int i = 0; i < size * size; i++)
@@ -424,7 +440,14 @@ bool mat_equal(int size, float *mat_a, float *mat_b)
     }
     return true;
 }
-
+/**
+ * @brief multiplies two matrices.
+ *
+ * @param size The size of the matrices. size * size matrix is assumed.
+ * @param[in] mat_a The first matrix
+ * @param[in] mat_b The second matrix
+ * @param[out] mat_out the output of the matrix multiplication.
+ */
 void mat_mult(int size, float *mat_a, float *mat_b, float *mat_out)
 {
     for (int i = 0; i < size; i++)
@@ -440,13 +463,20 @@ void mat_mult(int size, float *mat_a, float *mat_b, float *mat_out)
     }
 }
 
-void mat_transpose(int size, float *mat_a, float *mat_out)
+/**
+ * @brief transposes a matrix.
+ *
+ * @param[in] size The size of the matrix. size * size matrix is assumed.
+ * @param[in] mat The first matrix
+ * @param[out] mat_out where the transposed matrix is stored.
+ */
+void mat_transpose(int size, float *mat, float *mat_out)
 {
-    for (int i = 0; i < size; i++)
+    for (int row = 0; row < size; row++)
     {
-        for (int j = 0; j < size; j++)
+        for (int col = 0; col < size; col++)
         {
-            mat_out[i * size + j] = mat_a[j * size + i];
+            mat_out[row * size + col] = mat[col * size + row];
         }
     }
 }
@@ -482,7 +512,13 @@ void submatrix(int size, float *mat_a, float *mat_out, int remove_row, int remov
         new_row++;
     }
 }
-float mat_det_4x4(float *m)
+/**
+ * @brief Finds the determinant of a 4x4 matrix. This exists as a special case since it is done so often. It helps the compiler optimize (hopefully!).
+ *
+ * @param[in] m the matrix that has its determinant taken.
+ * @return float the determinant.
+ */
+inline float mat_det_4x4(float *m)
 {
     return m[3] * m[6] * m[9] * m[12] - m[2] * m[7] * m[9] * m[12] -
            m[3] * m[5] * m[10] * m[12] + m[1] * m[7] * m[10] * m[12] +
@@ -497,14 +533,25 @@ float mat_det_4x4(float *m)
            m[2] * m[4] * m[9] * m[15] - m[0] * m[6] * m[9] * m[15] -
            m[1] * m[4] * m[10] * m[15] + m[0] * m[5] * m[10] * m[15];
 }
-
-float mat_det_3x3(float *m)
+/**
+ * @brief Finds the determinant of a 3x3 matrix. This exists as a special case since it is done so often. It helps the compiler optimize (hopefully!).
+ *
+ * @param[in] m the matrix that has its determinant taken.
+ * @return float the determinant.
+ */
+inline float mat_det_3x3(float *m)
 {
     return m[0] * (m[4] * m[8] - m[5] * m[7]) -
            m[1] * (m[3] * m[8] - m[5] * m[6]) +
            m[2] * (m[3] * m[7] - m[4] * m[6]);
 }
-
+/**
+ * @brief Function that takes the determinant of a matrix.
+ *
+ * @param size the size of the matrix
+ * @param[in] mat_a the matrix
+ * @return float the determinant.
+ */
 float mat_det(int size, float *mat_a)
 {
     if (size == 2)
@@ -528,11 +575,24 @@ float mat_det(int size, float *mat_a)
     }
     return det;
 }
-
+/**
+ * @brief Checks if a matrix can be inverted.
+ *
+ * @param size The size of the matrix being checked
+ * @param[in] mat the matrix
+ * @return true if it is invertible, false otherwise
+ */
 bool mat_is_invertible(int size, float *mat)
 {
     return !equal(mat_det(size, mat), 0);
 }
+
+/**
+ * @brief Inverts a 4x4 matrix. Please don't ask. It's in the hot path.
+ *
+ * @param[in] m the matrix to be inverted.
+ * @param[out] out where the inverted matrix is stored
+ */
 void mat_inverse_4x4(float *m, float *out)
 {
     float inv[16];
@@ -568,6 +628,13 @@ void mat_inverse_4x4(float *m, float *out)
         out[i] = inv[i] * det;
     }
 }
+/**
+ * @brief Find the inverse of the matrix
+ *
+ * @param size the size of the matrix.
+ * @param[in] mat the matrix that will be inverted
+ * @param[out] out_mat the matrix where the inverse is stored
+ */
 void mat_inverse(int size, float *mat, float *out_mat)
 {
     if (size == 4)
@@ -589,7 +656,13 @@ void mat_inverse(int size, float *mat, float *out_mat)
         }
     }
 }
-
+/**
+ * @brief Multiples a 4x4 matrix by a tuple.
+ *
+ * @param[in] mat the matrix being multiplied
+ * @param tup the tuple being multiplied
+ * @return Tuple the output of the multiplication.
+ */
 Tuple mat_tuple_mult(float *mat, Tuple tup)
 {
     Tuple temp;
@@ -599,7 +672,14 @@ Tuple mat_tuple_mult(float *mat, Tuple tup)
     temp.w = mat[12] * tup.x + mat[13] * tup.y + mat[14] * tup.z + mat[15] * tup.w;
     return temp;
 }
-
+/**
+ * @brief creates a translation matrix based on x, y, and z values.
+ *
+ * @param x how much to translate in the x direction.
+ * @param y how much to translate in the y direction.
+ * @param z how much to translate in the z direction.
+ * @param[out] out the output translation matrix.
+ */
 void mat_translate(float x, float y, float z, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
@@ -611,7 +691,14 @@ void mat_translate(float x, float y, float z, float *out)
     out[7] = y;
     out[11] = z;
 }
-
+/**
+ * @brief creates a scaling matrix based on x, y, and z values.
+ *
+ * @param x how much to scale in the x direction.
+ * @param y how much to scale in the y direction.
+ * @param z how much to scale in the z direction.
+ * @param[out] out the output scaling matrix.
+ */
 void mat_scale(float x, float y, float z, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
@@ -621,39 +708,67 @@ void mat_scale(float x, float y, float z, float *out)
     out[15] = 1.0f;
 }
 
-void mat_rotate_x(float r, float *out)
+/**
+ * @brief creates a matrix to rotate about the x axis, r radians.
+ *
+ * @param radians the number of radians to rotate.
+ * @param[out] out the rotation matrix.
+ */
+void mat_rotate_x(float radians, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
     out[0] = 1.0f;
-    out[5] = cosf(r);
-    out[10] = cosf(r);
-    out[6] = -sinf(r);
-    out[9] = sinf(r);
+    out[5] = cosf(radians);
+    out[10] = cosf(radians);
+    out[6] = -sinf(radians);
+    out[9] = sinf(radians);
     out[15] = 1.0f;
 }
 
-void mat_rotate_y(float r, float *out)
+/**
+ * @brief creates a matrix to rotate about the y axis, r radians.
+ *
+ * @param radians the number of radians to rotate.
+ * @param[out] out the rotation matrix.
+ */
+void mat_rotate_y(float radians, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
-    out[0] = cosf(r);
+    out[0] = cosf(radians);
     out[5] = 1.0;
-    out[10] = cosf(r);
+    out[10] = cosf(radians);
     out[15] = 1.0f;
-    out[8] = -sinf(r);
-    out[2] = sinf(r);
+    out[8] = -sinf(radians);
+    out[2] = sinf(radians);
 }
 
-void mat_rotate_z(float r, float *out)
+/**
+ * @brief creates a matrix to rotate about the z axis, r radians.
+ *
+ * @param radians the number of radians to rotate.
+ * @param[out] out the rotation matrix.
+ */
+void mat_rotate_z(float radians, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
-    out[0] = cosf(r);
-    out[5] = cosf(r);
+    out[0] = cosf(radians);
+    out[5] = cosf(radians);
     out[10] = 1.0f;
     out[15] = 1.0f;
-    out[1] = -sinf(r);
-    out[4] = sinf(r);
+    out[1] = -sinf(radians);
+    out[4] = sinf(radians);
 }
-
+/**
+ * @brief creates a matrix to sheer. I have no clue how it works or what the parameters are. Look up matrix sheering algorithm.
+ *
+ * @param a I
+ * @param b Dont
+ * @param c Know
+ * @param d Lol
+ * @param e please ignore
+ * @param f look it up
+ * @param[out] out the output sheering matrix.
+ */
 void mat_sheer(float a, float b, float c, float d, float e, float f, float *out)
 {
     memset(out, 0, sizeof(float) * 16);
@@ -669,16 +784,9 @@ void mat_sheer(float a, float b, float c, float d, float e, float f, float *out)
     out[9] = f;
 }
 
-struct ray ray(Tuple origin, Tuple direction)
-{
-    struct ray ret = {.position = origin, .direction = direction};
-    return ret;
-}
-
 Tuple ray_position(struct ray r, double time)
 {
-    Tuple distance_moved = tuple_scale(r.direction, time);
-    return tuple_add(r.position, distance_moved);
+    return tuple_add(r.position, tuple_scale(r.direction, time));
 }
 Sphere sphere()
 {
@@ -716,8 +824,7 @@ Intersections intersect(Sphere *s, struct ray r1)
 
 Intersection intersection(float time, void *object)
 {
-    Intersection ret = {.time = time, .object = object};
-    return ret;
+    return (Intersection){.time = time, .object = object};
 }
 int comp(const void *a, const void *b)
 {
@@ -791,7 +898,13 @@ Tuple sphere_normal_at(Sphere s, Tuple p)
     world_normal.w = 0;
     return tuple_normalize(world_normal);
 }
-
+/**
+ * @brief Reflects a tuple about a surface normal.
+ *
+ * @param incoming The incoming tuple
+ * @param normal The normal
+ * @return Tuple the reflected normal.
+ */
 Tuple reflect(Tuple incoming, Tuple normal)
 {
     return tuple_sub(incoming, tuple_scale(normal, 2 * tuple_dot(incoming, normal)));
@@ -799,14 +912,12 @@ Tuple reflect(Tuple incoming, Tuple normal)
 
 PointLight point_light(Tuple position, Tuple intensity)
 {
-    PointLight light = {.intensity = intensity, .position = position};
-    return light;
+    return (PointLight){.intensity = intensity, .position = position};
 }
 
 struct material material(Tuple color, float ambient, float diffuse, float specular, float shininess)
 {
-    struct material m = {.color = color, .ambient = ambient, .diffuse = diffuse, .specular = specular, .shininess = shininess};
-    return m;
+    return (struct material){.color = color, .ambient = ambient, .diffuse = diffuse, .specular = specular, .shininess = shininess};
 }
 
 bool materials_equal(struct material mat1, struct material mat2)
@@ -848,12 +959,15 @@ Tuple lighting(struct material material, PointLight light, Tuple position, Tuple
     return tuple_add(diffuse, tuple_add(specular, ambient));
 }
 
-world_t world()
+world_t new_world()
 {
-    world_t wor = {.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
-    return wor;
+    return (world_t){.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
 }
-
+/**
+ * @brief Creates a default world.
+ *
+ * @return world_t The world.
+ */
 world_t default_world()
 {
     world_t wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
@@ -870,14 +984,21 @@ world_t default_world()
 
     return wor;
 }
-bool is_shadowed(world_t werld, Tuple point)
+/**
+ * @brief Checks if a point in the world is in shadow
+ *
+ * @param world The world, e.g lights, objects etc, that will be checked for shadows.
+ * @param point The point that will be checked.
+ * @return true if the point is in a shadow. False if it is not.
+ */
+bool is_shadowed(world_t world, Tuple point)
 {
-    Tuple v = tuple_sub(werld.light.position, point);
+    Tuple v = tuple_sub(world.light.position, point);
     float distance = tuple_magnitude(v);
     Tuple direction = tuple_normalize(v);
 
     Intersections inters;
-    intersect_world(werld, ray(point, direction), &inters);
+    intersect_world(world, (struct ray){point, direction}, &inters);
 
     Intersection h = hit(inters);
     if (h.object != NULL && h.time < distance)
@@ -946,12 +1067,15 @@ Computation prepare_computations(Intersection inter, struct ray r1)
     comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0.0f);
     if (comps.inside)
         comps.normalv = tuple_negate(comps.normalv);
+    comps.point = tuple_add(comps.point, tuple_scale(comps.normalv, EPSILON * 2));
     return comps;
 }
 
 Tuple shade_hit(world_t w, Computation comps)
 {
-    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv, false);
+    bool shadowed = is_shadowed(w, comps.point);
+
+    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv, shadowed);
 }
 
 Tuple color_at(world_t w, struct ray r)
@@ -997,8 +1121,8 @@ struct camera camera(int hsize, int vsize, float field_of_view)
 {
     struct camera c = {.hsize = hsize, .vsize = vsize, .field_of_view = field_of_view};
 
-    mat_identity(c.transform);
-    mat_identity(c.inverse_transform);
+    mat_identity_4x4(c.transform);
+    mat_identity_4x4(c.inverse_transform);
 
     float half_view = tan(c.field_of_view / 2.0);
     float aspect = (float)c.hsize / (float)c.vsize;
@@ -1030,12 +1154,12 @@ struct ray ray_for_pixel(struct camera c, int x, int y)
     Tuple origin = mat_tuple_mult(c.inverse_transform, point(0, 0, 0));
     Tuple direction = tuple_normalize(tuple_sub(pixel, origin));
 
-    return ray(origin, direction);
+    return (struct ray){origin, direction};
 }
 
 Canvas render(struct camera c, world_t w)
 {
-    Canvas image = canvas(c.hsize, c.vsize);
+    Canvas image = new_canvas(c.hsize, c.vsize);
     for (int y = 0; y < c.vsize; y++)
     {
         for (int x = 0; x < c.hsize; x++)
@@ -1099,7 +1223,7 @@ Canvas render_frame(struct camera c, world_t w, Canvas *image)
 
 Canvas render_scene()
 {
-    world_t w = world();
+    world_t w = new_world();
     w.num_spheres = 6;
 
     float temp1[16], temp2[16];

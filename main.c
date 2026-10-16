@@ -8,10 +8,12 @@
 
 int main(void)
 {
+    // Ensure all the tests pass
     test_linear_algebra();
 
+    // Run the real-time demo.
     struct world world;
-    Canvas image = canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
+    Canvas image = new_canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
     struct camera cam = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
     Tuple cam_pos = point(2, 3, -10);
     float mat_transform[16];
