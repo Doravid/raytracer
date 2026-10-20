@@ -70,35 +70,34 @@ void init_world(world_t *world)
 {
     *world = default_world();
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 600, "Raytracer");
-    SetTargetFPS(999);
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Raytracer");
+    SetTargetFPS(240);
     world->num_objects = 6;
 
     float temp1[16], temp2[16];
     float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
-
-    world->objects[0] = sphere_primitive();
     mat_scale(10, 0.1, 10, scale);
-    set_sphere_transform(&world->objects[0].primitive.s, scale);
-    world->objects[0].primitive.s.material.color = color(1, 0.9, 0.9);
-    world->objects[0].primitive.s.material.specular = 0;
 
-    world->objects[1] = sphere_primitive();
+    world->objects[0] = plane_primitive();
+    world->objects[0].primitive.pl.material.color = color(1, 0.9, 0.9);
+    world->objects[0].primitive.pl.material.specular = 0;
+
+    world->objects[1] = plane_primitive();
     mat_rotate_x(M_PI / 2, rotate_x);
     mat_rotate_y(-M_PI / 4, rotate_y);
     mat_translate(0, 0, 5, translate);
     mat_mult(4, rotate_x, scale, temp1);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_sphere_transform(&world->objects[1].primitive.s, final_transform);
-    world->objects[1].primitive.s.material = world->objects[0].primitive.s.material;
+    set_transform(&world->objects[1], final_transform);
+    world->objects[1].primitive.pl.material = world->objects[0].primitive.pl.material;
 
-    world->objects[2] = sphere_primitive();
+    world->objects[2] = plane_primitive();
     mat_rotate_y(M_PI / 4, rotate_y);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_sphere_transform(&world->objects[2].primitive.s, final_transform);
-    world->objects[2].primitive.s.material = world->objects[0].primitive.s.material;
+    set_transform(&world->objects[2], final_transform);
+    world->objects[2].primitive.pl.material = world->objects[0].primitive.pl.material;
 
     world->objects[3] = sphere_primitive();
     mat_translate(-0.5, 1.0, 0.5, translate);

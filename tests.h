@@ -1,6 +1,7 @@
 #pragma once
 
 #include "linear_algebra.h"
+Canvas render_scene();
 
 void test_linear_algebra()
 {
@@ -277,7 +278,8 @@ void test_linear_algebra()
     // Sphere Intersection Tests
     struct ray ray1 = (struct ray){point(0, 0, 0), vector(0, 0, 1)};
     Primitive s = sphere_primitive();
-    Intersections xs = intersect(&s, ray1);
+    Intersections xs;
+    intersect(&s, ray1, &xs);
 
     assert(xs.count == 2);
     assert(xs.intersections[0].time == -1.0);
@@ -335,7 +337,7 @@ void test_linear_algebra()
     s = sphere_primitive();
     mat_scale(2, 2, 2, m);
     set_sphere_transform(&s.primitive.s, m);
-    xs = intersect(&s, r);
+    intersect(&s, r, &xs);
     assert(xs.count == 2);
     assert(xs.count == 2);
     assert(xs.intersections[0].time == 3);
@@ -580,4 +582,108 @@ void test_linear_algebra()
     comps = prepare_computations(i, r);
     c = shade_hit(w, comps);
     assert(tuple_equal(color(0.1, 0.1, 0.1), c));
+
+    // Scenario: The normal of a plane is constant everywhere
+    Primitive pl = plane_primitive();
+    Tuple n1 = plane_normal_at(pl.primitive.pl, point(0, 0, 0));
+    Tuple n2 = plane_normal_at(pl.primitive.pl, point(10, 0, -10));
+    Tuple n3 = plane_normal_at(pl.primitive.pl, point(-5, 0, 150));
+    assert(tuple_equal(vector(0, 1, 0), n1));
+    assert(tuple_equal(vector(0, 1, 0), n2));
+    assert(tuple_equal(vector(0, 1, 0), n3));
+
+    // Scenario: Intersect with a ray parallel to the plane
+    pl = plane_primitive();
+    r = (struct ray){.position = point(0, 10, 0), .direction = vector(0, 0, 1)};
+    intersect(&pl, r, &xs);
+    assert(xs.count == 0);
+
+    // Scenario: A ray intersecting a plane from above
+    pl = plane_primitive();
+    r = (struct ray){.position = point(0, 1, 0), .direction = vector(0, -1, 0)};
+    intersect(&pl, r, &xs);
+    assert(xs.count == 1);
+    assert(equal(xs.intersections[0].time, 1.0f));
+    assert(xs.intersections[0].object == &pl);
+
+    // Scenario: A ray intersecting a plane from below
+    pl = plane_primitive();
+    r = (struct ray){.position = point(0, -1, 0), .direction = vector(0, 1, 0)};
+    intersect(&pl, r, &xs);
+    assert(xs.count == 1);
+    assert(equal(xs.intersections[0].time, 1.0f));
+    assert(xs.intersections[0].object == &pl);
+
+    // Scenario: Precomputing the reflection vectorLine 1
+
+    // Given shape ← plane()2
+    // And r ← ray(point(0, 1, -1), vector(0, -√2/2, √2/2))3
+    // And i ← intersection(√2, shape)4
+    // When comps ← prepare_computations(i, r)5
+    // Then comps.reflectv = vector(0, √2/2, √2/2)
+}
+
+Canvas render_scene()
+{
+    world_t w = new_world();
+    w.num_objects = 6;
+
+    float temp1[16], temp2[16];
+    float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
+
+    w.objects[0] = sphere_primitive();
+    mat_scale(10, 0.01, 10, scale);
+    set_sphere_transform(&w.objects[0].primitive.s, scale);
+    w.objects[0].primitive.s.material.color = color(1, 0.9, 0.9);
+    w.objects[0].primitive.s.material.specular = 0;
+
+    w.objects[1] = sphere_primitive();
+    mat_rotate_x(M_PI / 2, rotate_x);
+    mat_rotate_y(-M_PI / 4, rotate_y);
+    mat_translate(0, 0, 5, translate);
+    mat_mult(4, rotate_x, scale, temp1);
+    mat_mult(4, rotate_y, temp1, temp2);
+    mat_mult(4, translate, temp2, final_transform);
+    set_sphere_transform(&w.objects[1].primitive.s, final_transform);
+    w.objects[1].primitive.s.material = w.objects[0].primitive.s.material;
+
+    w.objects[2] = sphere_primitive();
+    mat_rotate_y(M_PI / 4, rotate_y);
+    mat_mult(4, rotate_y, temp1, temp2);
+    mat_mult(4, translate, temp2, final_transform);
+    set_sphere_transform(&w.objects[2].primitive.s, final_transform);
+    w.objects[2].primitive.s.material = w.objects[0].primitive.s.material;
+
+    w.objects[3] = sphere_primitive();
+    mat_translate(-0.5, 1.0, 0.5, translate);
+    set_sphere_transform(&w.objects[3].primitive.s, translate);
+    w.objects[3].primitive.s.material.color = color(0.1, 1.0, 0.5);
+    w.objects[3].primitive.s.material.diffuse = 0.7f;
+    w.objects[3].primitive.s.material.specular = 0.3f;
+
+    w.objects[4] = sphere_primitive();
+    mat_scale(0.5, 0.5, 0.5, scale);
+    mat_translate(1.5, 0.5, -0.5, translate);
+    mat_mult(4, translate, scale, final_transform);
+    set_sphere_transform(&w.objects[4].primitive.s, final_transform);
+    w.objects[4].primitive.s.material.color = color(0.5, 1.0, 0.1);
+    w.objects[4].primitive.s.material.diffuse = 0.7f;
+    w.objects[4].primitive.s.material.specular = 0.3f;
+    w.objects[5] = sphere_primitive();
+    mat_scale(0.33, 0.33, 0.33, scale);
+    mat_translate(-1.5, 0.33, -0.75, translate);
+    mat_mult(4, translate, scale, final_transform);
+    set_sphere_transform(&w.objects[5].primitive.s, final_transform);
+    w.objects[5].primitive.s.material.color = color(1.0, 0.8, 0.1);
+    w.objects[5].primitive.s.material.diffuse = 0.7f;
+    w.objects[5].primitive.s.material.specular = 0.3f;
+
+    w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
+
+    struct camera c = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
+    float mat_transform[16];
+    view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), mat_transform);
+    set_camera_transform(&c, mat_transform);
+
+    return render(c, w);
 }

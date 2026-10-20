@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -Wextra -O3 -ffast-math -g -fno-omit-frame-pointer -march=native
+CFLAGS = -Wall -Wextra -Werror -O3 -ffast-math -g -fno-omit-frame-pointer -march=native
 TARGET = raytracer.out
 SRCS = main.c
 DEPS = linear_algebra.h tests.h window.h Makefile

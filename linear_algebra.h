@@ -14,13 +14,14 @@
 
 #include "raylib.h"
 
-#define SCREEN_WIDTH (480)
-#define SCREEN_HEIGHT (360)
+#define SCREEN_WIDTH (640)
+#define SCREEN_HEIGHT (480)
 #define NUM_THREADS (8)
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
+#define UNUSED(x) ((void)x)
 
 #define EPSILON (0.0001)
 #define MAX_INTERSECTIONS 128
@@ -54,7 +55,7 @@ struct ray
 struct material
 {
     Tuple color;
-    float ambient, diffuse, specular, shininess;
+    float ambient, diffuse, specular, shininess, reflective;
 };
 typedef struct sphere
 {
@@ -65,6 +66,13 @@ typedef struct sphere
     float transpose[4 * 4];
     struct material material;
 } Sphere;
+typedef struct plane
+{
+    float transform[4 * 4];
+    float inverse_transform[4 * 4];
+    float transpose[4 * 4];
+    struct material material;
+} Plane;
 
 typedef enum
 {
@@ -78,6 +86,7 @@ typedef struct
     union
     {
         Sphere s;
+        Plane pl;
     } primitive;
 } Primitive;
 
@@ -88,6 +97,7 @@ typedef struct intersection_tuple
     int count;
     float distances[2];
 } Intersection_tuple;
+
 typedef struct intersection
 {
     float time;
@@ -105,6 +115,7 @@ typedef struct point_light
     Tuple intensity;
     Tuple position;
 } PointLight;
+
 typedef struct world
 {
     Primitive *objects;
@@ -117,7 +128,7 @@ typedef struct computation
 {
     Primitive *object;
     float time;
-    Tuple point, eyev, normalv;
+    Tuple point, eyev, normalv, reflectv;
     bool inside;
 } Computation;
 
@@ -160,6 +171,7 @@ void mat_inverse(int size, float *mat, float *out_mat);
 Tuple mat_tuple_mult(float *mat, Tuple tup);
 void mat_translate(float x, float y, float z, float *out);
 void mat_rotate_x(float r, float *out);
+void set_transform(Primitive *object, float *m);
 void mat_rotate_y(float r, float *out);
 void mat_rotate_z(float r, float *out);
 void mat_scale(float x, float y, float z, float *out);
@@ -168,13 +180,16 @@ Tuple ray_position(struct ray r, double time);
 struct ray ray_transform(struct ray r, float *m);
 Sphere sphere();
 Primitive sphere_primitive();
-Intersections intersect(Primitive *s, struct ray r1);
+Plane plane();
+Primitive plane_primitive();
+void intersect(Primitive *s, struct ray r1, Intersections *inters);
 Intersection intersection(float time, Primitive *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
 void set_sphere_transform(Sphere *object, float *m);
 void set_camera_transform(struct camera *object, float *m);
 Tuple sphere_normal_at(Sphere s, Tuple p);
+Tuple plane_normal_at(Plane s, Tuple p);
 Tuple reflect(Tuple incoming, Tuple normal);
 bool materials_equal(struct material mat1, struct material mat2);
 Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector, bool in_shadow);
@@ -247,7 +262,8 @@ void render_circle()
             camera_vector = tuple_sub(pixel_point, camera_origin);
             color_ray = (struct ray){camera_origin, camera_vector};
 
-            Intersections sphere_intersects = intersect(&cool_red_sphere, color_ray);
+            Intersections sphere_intersects;
+            intersect(&cool_red_sphere, color_ray, &sphere_intersects);
             if (sphere_intersects.count > 0)
                 write_pixel(&my_canvas, x, y, red);
             else
@@ -809,31 +825,41 @@ Tuple ray_position(struct ray r, double time)
 }
 Sphere sphere()
 {
-    return (Sphere){.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
+    return (Sphere){
+        .position = point(0, 0, 0),
+        .radius = 1,
+        .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0),
+    };
 }
 Primitive sphere_primitive()
 {
     return (Primitive){
-        .primitive.s = {
-            .position = point(0, 0, 0),
-            .radius = 1,
-            .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-            .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-            .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-            .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0),
-        },
-        .primitiveType = ObjectSphere,
-    };
-}
-Primitive sphere_to_primitive(Sphere sphere)
-{
-    return (Primitive){
-        .primitive.s = sphere,
+        .primitive.s = sphere(),
         .primitiveType = ObjectSphere,
     };
 }
 
-Intersections intersect(Primitive *s, struct ray r1)
+Plane plane()
+{
+    return (Plane){
+        .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0),
+    };
+}
+Primitive plane_primitive()
+{
+    return (Primitive){
+        .primitive.pl = plane(),
+        .primitiveType = ObjectPlane,
+    };
+}
+
+static void sphere_intersect(Primitive *s, struct ray r1, Intersections *inters)
 {
     struct ray ray = ray_transform(r1, s->primitive.s.inverse_transform);
     Intersections ret;
@@ -849,7 +875,8 @@ Intersections intersect(Primitive *s, struct ray r1)
     if (discriminant < 0)
     {
         ret.count = 0;
-        return ret;
+        *inters = ret;
+        return;
     }
 
     float t1 = (-1 * b - sqrt(discriminant)) / (2 * a);
@@ -858,8 +885,37 @@ Intersections intersect(Primitive *s, struct ray r1)
     Intersection inter2 = intersection(t2, s);
 
     if (t1 > t2)
-        return intersections(2, inter2, inter1);
-    return intersections(2, inter1, inter2);
+        *inters = intersections(2, inter2, inter1);
+    *inters = intersections(2, inter1, inter2);
+}
+
+static void plane_intersect(Primitive *s, struct ray r1, Intersections *inters)
+{
+    struct ray ray = ray_transform(r1, s->primitive.pl.inverse_transform);
+
+    if (fabsf(ray.direction.y) < EPSILON)
+    {
+        *inters = (Intersections){.count = 0};
+        return;
+    }
+
+    float t = -ray.position.y / ray.direction.y;
+    *inters = intersections(1, intersection(t, s));
+}
+
+void intersect(Primitive *s, struct ray r1, Intersections *inters)
+{
+    switch (s->primitiveType)
+    {
+    case ObjectSphere:
+        sphere_intersect(s, r1, inters);
+        break;
+    case ObjectPlane:
+        plane_intersect(s, r1, inters);
+        break;
+    default:
+        break;
+    }
 }
 
 Intersection intersection(float time, Primitive *object)
@@ -938,6 +994,15 @@ Tuple sphere_normal_at(Sphere s, Tuple p)
     world_normal.w = 0;
     return tuple_normalize(world_normal);
 }
+
+Tuple plane_normal_at(Plane s, Tuple p)
+{
+    UNUSED(p);
+    Tuple world_normal = mat_tuple_mult(s.transpose, vector(0, 1, 0));
+    world_normal.w = 0;
+    return tuple_normalize(world_normal);
+}
+
 /**
  * @brief Reflects a tuple about a surface normal.
  *
@@ -957,12 +1022,12 @@ PointLight point_light(Tuple position, Tuple intensity)
 
 struct material material(Tuple color, float ambient, float diffuse, float specular, float shininess)
 {
-    return (struct material){.color = color, .ambient = ambient, .diffuse = diffuse, .specular = specular, .shininess = shininess};
+    return (struct material){.color = color, .ambient = ambient, .diffuse = diffuse, .specular = specular, .shininess = shininess, .reflective = 0.f};
 }
 
 bool materials_equal(struct material mat1, struct material mat2)
 {
-    return equal(mat2.ambient, mat1.ambient) && tuple_equal(mat1.color, mat2.color) && equal(mat2.diffuse, mat1.diffuse) && equal(mat2.shininess, mat1.shininess) && equal(mat2.specular, mat1.specular);
+    return equal(mat2.ambient, mat1.ambient) && tuple_equal(mat1.color, mat2.color) && equal(mat2.diffuse, mat1.diffuse) && equal(mat2.shininess, mat1.shininess) && equal(mat2.specular, mat1.specular) && equal(mat2.reflective, mat1.reflective);
 }
 
 Tuple lighting(struct material material, PointLight light, Tuple position, Tuple eye_vector, Tuple normal_vector, bool in_shadow)
@@ -1051,33 +1116,18 @@ bool is_shadowed(world_t world, Tuple point)
 void intersect_world(world_t world, struct ray r, Intersections *ret)
 {
     ret->count = 0;
-    struct ray ray;
     for (int i = 0; i < world.num_objects; i++)
     {
-        ray = ray_transform(r, world.objects[i].primitive.s.inverse_transform);
+        Intersections local_inters;
+        intersect(&world.objects[i], r, &local_inters);
 
-        float c = tuple_dot(ray.position, ray.position) - 2.0f;
-        float half_b = tuple_dot(ray.direction, ray.position);
-
-        float a = tuple_dot(ray.direction, ray.direction);
-        float discriminant = half_b * half_b - (a * c);
-
-        if (discriminant < 0.0f)
-            continue;
-
-        // Error check: Prevent buffer overflow
-        if (ret->count + 2 > MAX_INTERSECTIONS)
+        for (int j = 0; j < local_inters.count; j++)
         {
-            fprintf(stderr, "ERROR: MAX_INTERSECTIONS exceeded in intersect_world. Dropping hits.\n");
-            break;
+            if (ret->count < MAX_INTERSECTIONS)
+            {
+                ret->intersections[ret->count++] = local_inters.intersections[j];
+            }
         }
-
-        float discr_sqrt = sqrtf(discriminant);
-        float t1 = (-half_b - discr_sqrt) / a;
-        float t2 = (-half_b + discr_sqrt) / a;
-
-        ret->intersections[ret->count++] = intersection(t1, &world.objects[i]);
-        ret->intersections[ret->count++] = intersection(t2, &world.objects[i]);
     }
 
     for (int i = 1; i < ret->count; i++)
@@ -1105,9 +1155,22 @@ Computation prepare_computations(Intersection inter, struct ray r1)
     comps.point = ray_position(r1, comps.time);
     comps.eyev = tuple_negate(r1.direction);
 
-    Primitive *prim = (Primitive *)comps.object;
-    comps.normalv = sphere_normal_at(prim->primitive.s, comps.point);
+    Primitive *prim = comps.object;
+    switch (prim->primitiveType)
+    {
+    case ObjectSphere:
+        comps.normalv = sphere_normal_at(prim->primitive.s, comps.point);
+        break;
+    case ObjectPlane:
+        comps.normalv = plane_normal_at(prim->primitive.pl, comps.point);
+        break;
+
+    default:
+        break;
+    }
+
     comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0.0f);
+
     if (comps.inside)
         comps.normalv = tuple_negate(comps.normalv);
     comps.point = tuple_add(comps.point, tuple_scale(comps.normalv, EPSILON * 2));
@@ -1117,11 +1180,40 @@ Computation prepare_computations(Intersection inter, struct ray r1)
 Tuple shade_hit(world_t w, Computation comps)
 {
     bool shadowed = is_shadowed(w, comps.point);
-
     Primitive *prim = (Primitive *)comps.object;
-    return lighting(prim->primitive.s.material, w.light, comps.point, comps.eyev, comps.normalv, shadowed);
+
+    struct material mat;
+    switch (prim->primitiveType)
+    {
+    case ObjectSphere:
+        mat = prim->primitive.s.material;
+        break;
+    case ObjectPlane:
+        mat = prim->primitive.pl.material;
+        break;
+    }
+
+    return lighting(mat, w.light, comps.point, comps.eyev, comps.normalv, shadowed);
 }
 
+void set_transform(Primitive *object, float *m)
+{
+    float inverse[16];
+    mat_inverse(4, m, inverse);
+    switch (object->primitiveType)
+    {
+    case ObjectSphere:
+        memcpy(object->primitive.s.transform, m, sizeof(float) * 16);
+        memcpy(object->primitive.s.inverse_transform, inverse, sizeof(float) * 16);
+        mat_transpose(4, inverse, object->primitive.s.transpose);
+        break;
+    case ObjectPlane:
+        memcpy(object->primitive.pl.transform, m, sizeof(float) * 16);
+        memcpy(object->primitive.pl.inverse_transform, inverse, sizeof(float) * 16);
+        mat_transpose(4, inverse, object->primitive.pl.transpose);
+        break;
+    }
+}
 Tuple color_at(world_t w, struct ray r)
 {
     Intersections inters;
@@ -1263,69 +1355,4 @@ Canvas render_frame(struct camera c, world_t w, Canvas *image)
     }
 
     return *image;
-}
-
-Canvas render_scene()
-{
-    world_t w = new_world();
-    w.num_objects = 6;
-
-    float temp1[16], temp2[16];
-    float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
-
-    w.objects[0] = sphere_primitive();
-    mat_scale(10, 0.01, 10, scale);
-    set_sphere_transform(&w.objects[0].primitive.s, scale);
-    w.objects[0].primitive.s.material.color = color(1, 0.9, 0.9);
-    w.objects[0].primitive.s.material.specular = 0;
-
-    w.objects[1] = sphere_primitive();
-    mat_rotate_x(M_PI / 2, rotate_x);
-    mat_rotate_y(-M_PI / 4, rotate_y);
-    mat_translate(0, 0, 5, translate);
-    mat_mult(4, rotate_x, scale, temp1);
-    mat_mult(4, rotate_y, temp1, temp2);
-    mat_mult(4, translate, temp2, final_transform);
-    set_sphere_transform(&w.objects[1].primitive.s, final_transform);
-    w.objects[1].primitive.s.material = w.objects[0].primitive.s.material;
-
-    w.objects[2] = sphere_primitive();
-    mat_rotate_y(M_PI / 4, rotate_y);
-    mat_mult(4, rotate_y, temp1, temp2);
-    mat_mult(4, translate, temp2, final_transform);
-    set_sphere_transform(&w.objects[2].primitive.s, final_transform);
-    w.objects[2].primitive.s.material = w.objects[0].primitive.s.material;
-
-    w.objects[3] = sphere_primitive();
-    mat_translate(-0.5, 1.0, 0.5, translate);
-    set_sphere_transform(&w.objects[3].primitive.s, translate);
-    w.objects[3].primitive.s.material.color = color(0.1, 1.0, 0.5);
-    w.objects[3].primitive.s.material.diffuse = 0.7f;
-    w.objects[3].primitive.s.material.specular = 0.3f;
-
-    w.objects[4] = sphere_primitive();
-    mat_scale(0.5, 0.5, 0.5, scale);
-    mat_translate(1.5, 0.5, -0.5, translate);
-    mat_mult(4, translate, scale, final_transform);
-    set_sphere_transform(&w.objects[4].primitive.s, final_transform);
-    w.objects[4].primitive.s.material.color = color(0.5, 1.0, 0.1);
-    w.objects[4].primitive.s.material.diffuse = 0.7f;
-    w.objects[4].primitive.s.material.specular = 0.3f;
-    w.objects[5] = sphere_primitive();
-    mat_scale(0.33, 0.33, 0.33, scale);
-    mat_translate(-1.5, 0.33, -0.75, translate);
-    mat_mult(4, translate, scale, final_transform);
-    set_sphere_transform(&w.objects[5].primitive.s, final_transform);
-    w.objects[5].primitive.s.material.color = color(1.0, 0.8, 0.1);
-    w.objects[5].primitive.s.material.diffuse = 0.7f;
-    w.objects[5].primitive.s.material.specular = 0.3f;
-
-    w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
-
-    struct camera c = camera(SCREEN_WIDTH, SCREEN_HEIGHT, M_PI / 3);
-    float mat_transform[16];
-    view_transform(point(0, 1.5, -5), point(0, 1, 0), vector(0, 1, 0), mat_transform);
-    set_camera_transform(&c, mat_transform);
-
-    return render(c, w);
 }
