@@ -66,63 +66,63 @@ Texture2D init_texture(Canvas *image)
     return LoadTextureFromImage(raylib_img);
 }
 
-void init_world(world_t *werld)
+void init_world(world_t *world)
 {
-    *werld = default_world();
+    *world = default_world();
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 600, "Raytracer");
     SetTargetFPS(999);
-    werld->num_spheres = 6;
+    world->num_objects = 6;
 
     float temp1[16], temp2[16];
     float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
 
-    werld->spheres[0] = sphere();
+    world->objects[0] = sphere_primitive();
     mat_scale(10, 0.1, 10, scale);
-    set_transform(&werld->spheres[0], scale);
-    werld->spheres[0].material.color = color(1, 0.9, 0.9);
-    werld->spheres[0].material.specular = 0;
+    set_sphere_transform(&world->objects[0].primitive.s, scale);
+    world->objects[0].primitive.s.material.color = color(1, 0.9, 0.9);
+    world->objects[0].primitive.s.material.specular = 0;
 
-    werld->spheres[1] = sphere();
+    world->objects[1] = sphere_primitive();
     mat_rotate_x(M_PI / 2, rotate_x);
     mat_rotate_y(-M_PI / 4, rotate_y);
     mat_translate(0, 0, 5, translate);
     mat_mult(4, rotate_x, scale, temp1);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_transform(&werld->spheres[1], final_transform);
-    werld->spheres[1].material = werld->spheres[0].material;
+    set_sphere_transform(&world->objects[1].primitive.s, final_transform);
+    world->objects[1].primitive.s.material = world->objects[0].primitive.s.material;
 
-    werld->spheres[2] = sphere();
+    world->objects[2] = sphere_primitive();
     mat_rotate_y(M_PI / 4, rotate_y);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_transform(&werld->spheres[2], final_transform);
-    werld->spheres[2].material = werld->spheres[0].material;
+    set_sphere_transform(&world->objects[2].primitive.s, final_transform);
+    world->objects[2].primitive.s.material = world->objects[0].primitive.s.material;
 
-    werld->spheres[3] = sphere();
+    world->objects[3] = sphere_primitive();
     mat_translate(-0.5, 1.0, 0.5, translate);
-    set_transform(&werld->spheres[3], translate);
-    werld->spheres[3].material.color = color(0.1, 1.0, 0.5);
-    werld->spheres[3].material.diffuse = 0.7f;
-    werld->spheres[3].material.specular = 0.3f;
+    set_sphere_transform(&world->objects[3].primitive.s, translate);
+    world->objects[3].primitive.s.material.color = color(0.1, 1.0, 0.5);
+    world->objects[3].primitive.s.material.diffuse = 0.7f;
+    world->objects[3].primitive.s.material.specular = 0.3f;
 
-    werld->spheres[4] = sphere();
+    world->objects[4] = sphere_primitive();
     mat_scale(0.5, 0.5, 0.5, scale);
     mat_translate(1.5, 0.5, -0.5, translate);
     mat_mult(4, translate, scale, final_transform);
-    set_transform(&werld->spheres[4], final_transform);
-    werld->spheres[4].material.color = color(0.5, 1.0, 0.1);
-    werld->spheres[4].material.diffuse = 0.7f;
-    werld->spheres[4].material.specular = 0.3f;
-    werld->spheres[5] = sphere();
+    set_sphere_transform(&world->objects[4].primitive.s, final_transform);
+    world->objects[4].primitive.s.material.color = color(0.5, 1.0, 0.1);
+    world->objects[4].primitive.s.material.diffuse = 0.7f;
+    world->objects[4].primitive.s.material.specular = 0.3f;
+    world->objects[5] = sphere_primitive();
     mat_scale(0.33, 0.33, 0.33, scale);
     mat_translate(-1.5, 0.33, -0.75, translate);
     mat_mult(4, translate, scale, final_transform);
-    set_transform(&werld->spheres[5], final_transform);
-    werld->spheres[5].material.color = color(1.0, 0.8, 0.1);
-    werld->spheres[5].material.diffuse = 0.7f;
-    werld->spheres[5].material.specular = 0.3f;
+    set_sphere_transform(&world->objects[5].primitive.s, final_transform);
+    world->objects[5].primitive.s.material.color = color(1.0, 0.8, 0.1);
+    world->objects[5].primitive.s.material.diffuse = 0.7f;
+    world->objects[5].primitive.s.material.specular = 0.3f;
 
-    werld->light = point_light(point(-10, 10, -10), color(1, 1, 1));
+    world->light = point_light(point(-10, 10, -10), color(1, 1, 1));
 }

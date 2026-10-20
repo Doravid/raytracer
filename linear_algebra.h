@@ -66,6 +66,23 @@ typedef struct sphere
     struct material material;
 } Sphere;
 
+typedef enum
+{
+    ObjectSphere,
+    ObjectPlane,
+} PrimitiveType;
+
+typedef struct
+{
+    PrimitiveType primitiveType;
+    union
+    {
+        Sphere s;
+    } primitive;
+} Primitive;
+
+Primitive sphere_1 = {.primitiveType = ObjectSphere, .primitive.s = {}};
+
 typedef struct intersection_tuple
 {
     int count;
@@ -74,7 +91,7 @@ typedef struct intersection_tuple
 typedef struct intersection
 {
     float time;
-    void *object;
+    Primitive *object;
 } Intersection;
 
 typedef struct intersections
@@ -90,14 +107,15 @@ typedef struct point_light
 } PointLight;
 typedef struct world
 {
-    Sphere *spheres;
-    int num_spheres;
+    Primitive *objects;
+    int num_objects;
 
     PointLight light;
 } world_t;
+
 typedef struct computation
 {
-    void *object;
+    Primitive *object;
     float time;
     Tuple point, eyev, normalv;
     bool inside;
@@ -149,12 +167,13 @@ void mat_sheer(float a, float b, float c, float d, float e, float f, float *out)
 Tuple ray_position(struct ray r, double time);
 struct ray ray_transform(struct ray r, float *m);
 Sphere sphere();
-Intersections intersect(Sphere *s, struct ray r1);
-Intersection intersection(float time, void *object);
+Primitive sphere_primitive();
+Intersections intersect(Primitive *s, struct ray r1);
+Intersection intersection(float time, Primitive *object);
 Intersections intersections(int count, ...);
 Intersection hit(Intersections inters);
-void set_transform(void *object, float *m);
-void set_camera_transform(void *object, float *m);
+void set_sphere_transform(Sphere *object, float *m);
+void set_camera_transform(struct camera *object, float *m);
 Tuple sphere_normal_at(Sphere s, Tuple p);
 Tuple reflect(Tuple incoming, Tuple normal);
 bool materials_equal(struct material mat1, struct material mat2);
@@ -213,12 +232,12 @@ void render_circle()
     Tuple camera_origin = point(0, 0, 0);
     Tuple pixel_point, camera_vector;
     struct ray color_ray;
-    Sphere cool_red_sphere = sphere();
+    Primitive cool_red_sphere = sphere_primitive();
     Tuple black = color(0, 0, 0);
     float sphere_mat[16];
 
     mat_translate(0, 0, 2.0, sphere_mat);
-    set_transform(&cool_red_sphere, sphere_mat);
+    set_sphere_transform(&cool_red_sphere.primitive.s, sphere_mat);
 
     for (int x = 0; x < SIZE; x++)
     {
@@ -792,13 +811,34 @@ Sphere sphere()
 {
     return (Sphere){.position = point(0, 0, 0), .radius = 1, .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)};
 }
-
-Intersections intersect(Sphere *s, struct ray r1)
+Primitive sphere_primitive()
 {
-    struct ray ray = ray_transform(r1, s->inverse_transform);
+    return (Primitive){
+        .primitive.s = {
+            .position = point(0, 0, 0),
+            .radius = 1,
+            .transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+            .inverse_transform = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+            .transpose = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+            .material = material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0),
+        },
+        .primitiveType = ObjectSphere,
+    };
+}
+Primitive sphere_to_primitive(Sphere sphere)
+{
+    return (Primitive){
+        .primitive.s = sphere,
+        .primitiveType = ObjectSphere,
+    };
+}
+
+Intersections intersect(Primitive *s, struct ray r1)
+{
+    struct ray ray = ray_transform(r1, s->primitive.s.inverse_transform);
     Intersections ret;
     ret.count = 2;
-    Tuple sphere_to_ray = tuple_sub(ray.position, s->position);
+    Tuple sphere_to_ray = tuple_sub(ray.position, s->primitive.s.position);
 
     float a = tuple_dot(ray.direction, ray.direction);
     float b = 2 * tuple_dot(ray.direction, sphere_to_ray);
@@ -822,7 +862,7 @@ Intersections intersect(Sphere *s, struct ray r1)
     return intersections(2, inter1, inter2);
 }
 
-Intersection intersection(float time, void *object)
+Intersection intersection(float time, Primitive *object)
 {
     return (Intersection){.time = time, .object = object};
 }
@@ -873,7 +913,7 @@ struct ray ray_transform(struct ray r, float *m)
     r.direction = mat_tuple_mult(m, r.direction);
     return r;
 }
-void set_transform(void *object, float *m)
+void set_sphere_transform(Sphere *object, float *m)
 {
     memcpy((((Sphere *)object)->transform), m, sizeof(float) * 16);
     float inverse[16];
@@ -882,12 +922,12 @@ void set_transform(void *object, float *m)
 
     mat_transpose(4, inverse, ((Sphere *)object)->transpose);
 }
-void set_camera_transform(void *object, float *m)
+void set_camera_transform(struct camera *cam, float *m)
 {
-    memcpy((((struct camera *)object)->transform), m, sizeof(float) * 16);
+    memcpy(cam->transform, m, sizeof(float) * 16);
     float inverse[16];
     mat_inverse(4, m, inverse);
-    memcpy((((struct camera *)object)->inverse_transform), inverse, sizeof(float) * 16);
+    memcpy(cam->inverse_transform, inverse, sizeof(float) * 16);
 }
 
 Tuple sphere_normal_at(Sphere s, Tuple p)
@@ -961,7 +1001,7 @@ Tuple lighting(struct material material, PointLight light, Tuple position, Tuple
 
 world_t new_world()
 {
-    return (world_t){.light = point_light(point(0, 0, 0), color(0, 0, 0)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
+    return (world_t){.light = point_light(point(0, 0, 0), color(0, 0, 0)), .objects = malloc(sizeof(Primitive) * 10), .num_objects = 0};
 }
 /**
  * @brief Creates a default world.
@@ -970,17 +1010,18 @@ world_t new_world()
  */
 world_t default_world()
 {
-    world_t wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .spheres = malloc(sizeof(Sphere) * 10), .num_spheres = 0};
-    Sphere s1 = sphere();
-    s1.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 200.0);
+    world_t wor = {.light = point_light(point(-10, 10, -10), color(1, 1, 1)), .objects = malloc(sizeof(Primitive) * 10), .num_objects = 0};
+    Primitive sphere1 = {.primitiveType = ObjectSphere, .primitive.s = sphere()};
+    sphere1.primitive.s.material = material(color(0.8, 1, 0.6), 0.1, 0.7, 0.2, 200.0);
+
     float s2_mat[4 * 4];
     mat_scale(0.5, 0.5, 0.5, s2_mat);
-    Sphere s2 = sphere();
-    set_transform(&s2, s2_mat);
+    Primitive sphere2 = {.primitiveType = ObjectSphere, .primitive.s = sphere()};
+    set_sphere_transform(&sphere2.primitive.s, s2_mat);
 
-    wor.spheres[0] = s1;
-    wor.spheres[1] = s2;
-    wor.num_spheres = 2;
+    wor.objects[0] = sphere1;
+    wor.objects[1] = sphere2;
+    wor.num_objects = 2;
 
     return wor;
 }
@@ -1011,9 +1052,9 @@ void intersect_world(world_t world, struct ray r, Intersections *ret)
 {
     ret->count = 0;
     struct ray ray;
-    for (int i = 0; i < world.num_spheres; i++)
+    for (int i = 0; i < world.num_objects; i++)
     {
-        ray = ray_transform(r, world.spheres[i].inverse_transform);
+        ray = ray_transform(r, world.objects[i].primitive.s.inverse_transform);
 
         float c = tuple_dot(ray.position, ray.position) - 2.0f;
         float half_b = tuple_dot(ray.direction, ray.position);
@@ -1035,8 +1076,8 @@ void intersect_world(world_t world, struct ray r, Intersections *ret)
         float t1 = (-half_b - discr_sqrt) / a;
         float t2 = (-half_b + discr_sqrt) / a;
 
-        ret->intersections[ret->count++] = intersection(t1, &world.spheres[i]);
-        ret->intersections[ret->count++] = intersection(t2, &world.spheres[i]);
+        ret->intersections[ret->count++] = intersection(t1, &world.objects[i]);
+        ret->intersections[ret->count++] = intersection(t2, &world.objects[i]);
     }
 
     for (int i = 1; i < ret->count; i++)
@@ -1063,7 +1104,9 @@ Computation prepare_computations(Intersection inter, struct ray r1)
     // Pre-compute some useful values
     comps.point = ray_position(r1, comps.time);
     comps.eyev = tuple_negate(r1.direction);
-    comps.normalv = sphere_normal_at(*(Sphere *)comps.object, comps.point);
+
+    Primitive *prim = (Primitive *)comps.object;
+    comps.normalv = sphere_normal_at(prim->primitive.s, comps.point);
     comps.inside = (tuple_dot(comps.normalv, comps.eyev) < 0.0f);
     if (comps.inside)
         comps.normalv = tuple_negate(comps.normalv);
@@ -1075,7 +1118,8 @@ Tuple shade_hit(world_t w, Computation comps)
 {
     bool shadowed = is_shadowed(w, comps.point);
 
-    return lighting(((Sphere *)comps.object)->material, w.light, comps.point, comps.eyev, comps.normalv, shadowed);
+    Primitive *prim = (Primitive *)comps.object;
+    return lighting(prim->primitive.s.material, w.light, comps.point, comps.eyev, comps.normalv, shadowed);
 }
 
 Tuple color_at(world_t w, struct ray r)
@@ -1224,57 +1268,57 @@ Canvas render_frame(struct camera c, world_t w, Canvas *image)
 Canvas render_scene()
 {
     world_t w = new_world();
-    w.num_spheres = 6;
+    w.num_objects = 6;
 
     float temp1[16], temp2[16];
     float scale[16], rotate_x[16], rotate_y[16], translate[16], final_transform[16];
 
-    w.spheres[0] = sphere();
+    w.objects[0] = sphere_primitive();
     mat_scale(10, 0.01, 10, scale);
-    set_transform(&w.spheres[0], scale);
-    w.spheres[0].material.color = color(1, 0.9, 0.9);
-    w.spheres[0].material.specular = 0;
+    set_sphere_transform(&w.objects[0].primitive.s, scale);
+    w.objects[0].primitive.s.material.color = color(1, 0.9, 0.9);
+    w.objects[0].primitive.s.material.specular = 0;
 
-    w.spheres[1] = sphere();
+    w.objects[1] = sphere_primitive();
     mat_rotate_x(M_PI / 2, rotate_x);
     mat_rotate_y(-M_PI / 4, rotate_y);
     mat_translate(0, 0, 5, translate);
     mat_mult(4, rotate_x, scale, temp1);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_transform(&w.spheres[1], final_transform);
-    w.spheres[1].material = w.spheres[0].material;
+    set_sphere_transform(&w.objects[1].primitive.s, final_transform);
+    w.objects[1].primitive.s.material = w.objects[0].primitive.s.material;
 
-    w.spheres[2] = sphere();
+    w.objects[2] = sphere_primitive();
     mat_rotate_y(M_PI / 4, rotate_y);
     mat_mult(4, rotate_y, temp1, temp2);
     mat_mult(4, translate, temp2, final_transform);
-    set_transform(&w.spheres[2], final_transform);
-    w.spheres[2].material = w.spheres[0].material;
+    set_sphere_transform(&w.objects[2].primitive.s, final_transform);
+    w.objects[2].primitive.s.material = w.objects[0].primitive.s.material;
 
-    w.spheres[3] = sphere();
+    w.objects[3] = sphere_primitive();
     mat_translate(-0.5, 1.0, 0.5, translate);
-    set_transform(&w.spheres[3], translate);
-    w.spheres[3].material.color = color(0.1, 1.0, 0.5);
-    w.spheres[3].material.diffuse = 0.7f;
-    w.spheres[3].material.specular = 0.3f;
+    set_sphere_transform(&w.objects[3].primitive.s, translate);
+    w.objects[3].primitive.s.material.color = color(0.1, 1.0, 0.5);
+    w.objects[3].primitive.s.material.diffuse = 0.7f;
+    w.objects[3].primitive.s.material.specular = 0.3f;
 
-    w.spheres[4] = sphere();
+    w.objects[4] = sphere_primitive();
     mat_scale(0.5, 0.5, 0.5, scale);
     mat_translate(1.5, 0.5, -0.5, translate);
     mat_mult(4, translate, scale, final_transform);
-    set_transform(&w.spheres[4], final_transform);
-    w.spheres[4].material.color = color(0.5, 1.0, 0.1);
-    w.spheres[4].material.diffuse = 0.7f;
-    w.spheres[4].material.specular = 0.3f;
-    w.spheres[5] = sphere();
+    set_sphere_transform(&w.objects[4].primitive.s, final_transform);
+    w.objects[4].primitive.s.material.color = color(0.5, 1.0, 0.1);
+    w.objects[4].primitive.s.material.diffuse = 0.7f;
+    w.objects[4].primitive.s.material.specular = 0.3f;
+    w.objects[5] = sphere_primitive();
     mat_scale(0.33, 0.33, 0.33, scale);
     mat_translate(-1.5, 0.33, -0.75, translate);
     mat_mult(4, translate, scale, final_transform);
-    set_transform(&w.spheres[5], final_transform);
-    w.spheres[5].material.color = color(1.0, 0.8, 0.1);
-    w.spheres[5].material.diffuse = 0.7f;
-    w.spheres[5].material.specular = 0.3f;
+    set_sphere_transform(&w.objects[5].primitive.s, final_transform);
+    w.objects[5].primitive.s.material.color = color(1.0, 0.8, 0.1);
+    w.objects[5].primitive.s.material.diffuse = 0.7f;
+    w.objects[5].primitive.s.material.specular = 0.3f;
 
     w.light = point_light(point(-10, 10, -10), color(1, 1, 1));
 

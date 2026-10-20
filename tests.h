@@ -276,7 +276,7 @@ void test_linear_algebra()
 
     // Sphere Intersection Tests
     struct ray ray1 = (struct ray){point(0, 0, 0), vector(0, 0, 1)};
-    Sphere s = sphere();
+    Primitive s = sphere_primitive();
     Intersections xs = intersect(&s, ray1);
 
     assert(xs.count == 2);
@@ -321,20 +321,20 @@ void test_linear_algebra()
     assert(tuple_equal(r2.position, point(2, 6, 12)));
     assert(tuple_equal(r2.direction, vector(0, 3, 0)));
     // Scenario: A sphere's default transformation
-    s = sphere();
+    s = sphere_primitive();
     mat_identity_4x4(m);
-    assert(mat_equal(4, s.transform, m));
+    assert(mat_equal(4, s.primitive.s.transform, m));
 
     // Scenario: Changing a sphere's transformation
     mat_translate(2, 3, 4, m);
-    set_transform(&s, m);
-    assert(mat_equal(4, s.transform, m));
+    set_sphere_transform(&s.primitive.s, m);
+    assert(mat_equal(4, s.primitive.s.transform, m));
 
     // Scenario: Intersecting a scaled sphere with a ray
     struct ray r = (struct ray){point(0, 0, -5), vector(0, 0, 1)};
-    s = sphere();
+    s = sphere_primitive();
     mat_scale(2, 2, 2, m);
-    set_transform(&s, m);
+    set_sphere_transform(&s.primitive.s, m);
     xs = intersect(&s, r);
     assert(xs.count == 2);
     assert(xs.count == 2);
@@ -345,15 +345,15 @@ void test_linear_algebra()
 
     render_circle();
 
-    s = sphere();
-    Tuple normal = sphere_normal_at(s, point(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3));
+    s = sphere_primitive();
+    Tuple normal = sphere_normal_at(s.primitive.s, point(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3));
     assert(tuple_equal(normal, vector(sqrt(3) / 3, sqrt(3) / 3, sqrt(3) / 3)));
     // Scenario: Computing the normal on a translated sphere
-    s = sphere();
+    s = sphere_primitive();
     float sphere_mat[16];
     mat_translate(0, 1, 0, sphere_mat);
-    set_transform(&s, sphere_mat);
-    normal = sphere_normal_at(s, point(0, 1.70711, -0.70711));
+    set_sphere_transform(&s.primitive.s, sphere_mat);
+    normal = sphere_normal_at(s.primitive.s, point(0, 1.70711, -0.70711));
     assert(tuple_equal(normal, vector(0, 0.70711, -0.70711)));
 
     // Scenario: Reflecting a vector approaching at 45°
@@ -368,8 +368,8 @@ void test_linear_algebra()
     assert(tuple_equal(res, vector(1, 0, 0)));
 
     // Scenario: A sphere has a default material
-    s = sphere();
-    struct material material_1 = s.material;
+    s = sphere_primitive();
+    struct material material_1 = s.primitive.s.material;
     assert(materials_equal(material_1, material(color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)));
 
     // Scenario: Lighting with the eye between the light and the surface
@@ -401,7 +401,7 @@ void test_linear_algebra()
 
     // Scenario: Precomputing the state of an intersection
     r = (struct ray){point(0, 0, -5), vector(0, 0, 1)};
-    Sphere shape = sphere();
+    Primitive shape = sphere_primitive();
     Intersection i = intersection(4, &shape);
     Computation comps = prepare_computations(i, r);
     assert(comps.time == i.time);
@@ -412,14 +412,14 @@ void test_linear_algebra()
 
     // Scenario: The hit, when an intersection occurs on the outside
     r = (struct ray){point(0, 0, -5), vector(0, 0, 1)};
-    shape = sphere();
+    shape = sphere_primitive();
     i = intersection(4, &shape);
     comps = prepare_computations(i, r);
     // assert(comps.inside == false);
 
     // Scenario: The hit, when an intersection occurs on the inside
     r = (struct ray){point(0, 0, 0), vector(0, 0, 1)};
-    shape = sphere();
+    shape = sphere_primitive();
     i = intersection(1, &shape);
     comps = prepare_computations(i, r);
     // assert(tuple_equal(comps.point, point(0, 0, 1)));
@@ -430,7 +430,7 @@ void test_linear_algebra()
     // Scenario: Shading an intersection
     world_t w = default_world();
     r = (struct ray){point(0, 0, -5), vector(0, 0, 1)};
-    shape = w.spheres[0];
+    shape = w.objects[0];
     i = intersection(4, &shape);
     comps = prepare_computations(i, r);
     c = shade_hit(w, comps);
@@ -440,7 +440,7 @@ void test_linear_algebra()
     w = default_world();
     w.light = point_light(point(0, 0.25, 0), color(1, 1, 1));
     r = (struct ray){point(0, 0, 0), vector(0, 0, 1)};
-    shape = w.spheres[1];
+    shape = w.objects[1];
     i = intersection(0.5, &shape);
     comps = prepare_computations(i, r);
     c = shade_hit(w, comps);
@@ -448,9 +448,9 @@ void test_linear_algebra()
 
     // Scenario: The color with an intersection behind the ray
     w = default_world();
-    Sphere *outer = &w.spheres[0];
+    Sphere *outer = &w.objects[0].primitive.s;
     outer->material.ambient = 1;
-    Sphere *inner = &w.spheres[1];
+    Sphere *inner = &w.objects[1].primitive.s;
     inner->material.ambient = 1;
     r = (struct ray){point(0, 0, 0.75), vector(0, 0, -1)};
     c = color_at(w, r);
@@ -530,7 +530,7 @@ void test_linear_algebra()
     // assert(tuple_equal(read_pixel(&image, 5, 5), color(0.38066, 0.47583, 0.2855)));
 
     w = default_world();
-    w.spheres[1].material.color = color(0.8, 0.3, 0.8);
+    w.objects[1].primitive.s.material.color = color(0.8, 0.3, 0.8);
     cam = camera(410, 410, M_PI / 2);
     from = point(0, 0, -0.8);
     to = point(0, 0, 0);
@@ -569,12 +569,12 @@ void test_linear_algebra()
     // Scenario: shade_hit() is given an intersection in shadow
     w = new_world();
     w.light = point_light(point(0, 0, -10), color(1, 1, 1));
-    Sphere s1 = sphere();
-    w.spheres[0] = s1;
-    Sphere s2 = sphere();
-    mat_translate(0, 0, 0, s2.transform);
-    w.spheres[1] = s2;
-    w.num_spheres = 2;
+    Primitive s1 = sphere_primitive();
+    w.objects[0] = s1;
+    Primitive s2 = sphere_primitive();
+    mat_translate(0, 0, 0, s2.primitive.s.transform);
+    w.objects[1] = s2;
+    w.num_objects = 2;
     r = (struct ray){.position = point(0, 0, 5), .direction = vector(0, 0, 1)};
     i = intersection(4, &s2);
     comps = prepare_computations(i, r);
